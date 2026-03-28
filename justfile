@@ -1,3 +1,7 @@
+set export
+
+cuttlefish_remote_host := env_var_or_default("CUTTLEFISH_REMOTE_HOST", "justin@100.73.239.5")
+
 # Show available commands
 default:
 	@just --list
@@ -109,6 +113,30 @@ ui-vm-status:
 # Show guest greetd and smoke-service journal output
 ui-vm-journal:
 	@scripts/ui_vm_journal.sh
+
+# Diagnose the local UI VM via shadowctl
+ui-vm-doctor:
+	@scripts/shadowctl vm doctor
+
+# Show machine-readable UI VM state
+ui-vm-state:
+	@scripts/shadowctl vm state --json
+
+# Wait for the UI VM session to reach steady state
+ui-vm-wait-ready:
+	@scripts/shadowctl vm wait-ready
+
+# Save a screenshot of the local UI VM window via QMP
+ui-vm-screenshot output="build/ui-vm/shadow-ui-vm.ppm":
+	@scripts/shadowctl vm screenshot "{{output}}"
+
+# Ask the compositor to open an app by ID
+ui-vm-open app="counter":
+	@scripts/shadowctl vm open "{{app}}"
+
+# Query the local UI VM via shadowctl
+shadowctl *args='':
+	@scripts/shadowctl {{args}}
 
 # Launch a cargo package inside the running UI VM compositor session
 ui-vm-app-run package:

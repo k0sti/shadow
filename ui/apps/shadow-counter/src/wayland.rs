@@ -3,6 +3,7 @@
 use std::{convert::TryInto, time::Duration};
 
 use font8x8::{UnicodeFonts, BASIC_FONTS};
+use shadow_ui_core::app::COUNTER_WAYLAND_APP_ID;
 use smithay_client_toolkit::reexports::calloop::EventLoop;
 use smithay_client_toolkit::reexports::calloop_wayland_source::WaylandSource;
 use smithay_client_toolkit::{
@@ -57,7 +58,7 @@ pub fn run() {
     let surface = compositor.create_surface(&queue_handle);
     let window = xdg_shell.create_window(surface, WindowDecorations::RequestServer, &queue_handle);
     window.set_title("Shadow Counter");
-    window.set_app_id("sh.shadow.counter");
+    window.set_app_id(COUNTER_WAYLAND_APP_ID);
     window.set_min_size(Some((WINDOW_WIDTH, WINDOW_HEIGHT)));
     window.commit();
     eprintln!("[shadow-counter] surface-committed");

@@ -2,7 +2,7 @@ use crate::app::{self, AppId};
 
 #[cfg(unix)]
 use std::{
-    io::{self, Write},
+    io::{self, Read, Write},
     os::unix::net::UnixStream,
 };
 
@@ -14,6 +14,7 @@ pub enum ControlRequest {
     Launch { app_id: AppId },
     Home,
     Switcher,
+    State,
 }
 
 impl ControlRequest {
@@ -22,6 +23,7 @@ impl ControlRequest {
             Self::Launch { app_id } => format!("launch {}\n", app_id.as_str()),
             Self::Home => "home\n".to_string(),
             Self::Switcher => "switcher\n".to_string(),
+            Self::State => "state\n".to_string(),
         }
     }
 
@@ -33,6 +35,7 @@ impl ControlRequest {
             }),
             (Some("home"), None, None) => Some(Self::Home),
             (Some("switcher"), None, None) => Some(Self::Switcher),
+            (Some("state"), None, None) => Some(Self::State),
             _ => None,
         }
     }
@@ -46,7 +49,23 @@ pub fn request(request: ControlRequest) -> io::Result<bool> {
 
     let mut stream = UnixStream::connect(socket_path)?;
     stream.write_all(request.encode().as_bytes())?;
+    let _ = stream.shutdown(std::net::Shutdown::Write);
     Ok(true)
+}
+
+#[cfg(unix)]
+pub fn request_response(request: ControlRequest) -> io::Result<Option<String>> {
+    let Ok(socket_path) = std::env::var(COMPOSITOR_CONTROL_ENV) else {
+        return Ok(None);
+    };
+
+    let mut stream = UnixStream::connect(socket_path)?;
+    stream.write_all(request.encode().as_bytes())?;
+    stream.shutdown(std::net::Shutdown::Write)?;
+
+    let mut response = String::new();
+    stream.read_to_string(&mut response)?;
+    Ok(Some(response))
 }
 
 #[cfg(test)]
@@ -71,5 +90,6 @@ mod tests {
             ControlRequest::parse("switcher"),
             Some(ControlRequest::Switcher)
         );
+        assert_eq!(ControlRequest::parse("state"), Some(ControlRequest::State));
     }
 }

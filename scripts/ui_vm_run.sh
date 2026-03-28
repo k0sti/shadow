@@ -27,5 +27,6 @@ echo "ui-vm-run: qemu window will host the real Linux compositor"
 echo "ui-vm-run: ssh endpoint shadow@127.0.0.1:2222"
 echo "ui-vm-run: state image .shadow-vm/shadow-ui-state.img"
 echo "ui-vm-run: first boot or dependency changes may spend time compiling in guest"
+echo "ui-vm-run: use 'just ui-vm-doctor' or 'just ui-vm-wait-ready' while the screen is blank"
 
 exec "$RUNNER_LINK/bin/microvm-run"

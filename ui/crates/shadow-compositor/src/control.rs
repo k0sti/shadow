@@ -1,7 +1,7 @@
 #![cfg(target_os = "linux")]
 
 use std::{
-    io::{self, Read},
+    io::{self, Read, Write},
     os::unix::net::UnixListener,
     path::PathBuf,
 };
@@ -42,11 +42,28 @@ pub fn init_listener(event_loop: &mut EventLoop<ShadowCompositor>) -> io::Result
                                 tracing::warn!("ignoring malformed control request");
                                 continue;
                             };
-                            if let Err(error) = state.handle_control_request(request) {
-                                tracing::warn!("failed to handle control request: {error}");
+                            match state.handle_control_request(request) {
+                                Ok(response) => {
+                                    if let Err(error) = stream.write_all(response.as_bytes()) {
+                                        tracing::warn!("failed to write control response: {error}");
+                                    }
+                                }
+                                Err(error) => {
+                                    let _ = stream.write_all(
+                                        format!("error={}\n", error.to_string().replace('\n', " "))
+                                            .as_bytes(),
+                                    );
+                                    tracing::warn!("failed to handle control request: {error}");
+                                }
                             }
                         }
-                        Err(error) => tracing::warn!("failed to read control request: {error}"),
+                        Err(error) => {
+                            let _ = stream.write_all(
+                                format!("error={}\n", error.to_string().replace('\n', " "))
+                                    .as_bytes(),
+                            );
+                            tracing::warn!("failed to read control request: {error}");
+                        }
                     }
                 }
 

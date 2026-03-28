@@ -41,5 +41,13 @@ The current operator ladder reflects that split:
 3. `just cf-guest-ui-smoke` boots stock Android, uses `adb root`, starts `shadow-session` plus `shadow-compositor-guest`, auto-launches one guest Wayland client, and saves the captured frame artifact under `build/guest-ui/`.
 4. `just cf-guest-ui-drm-smoke` proves the same guest compositor path can also present to DRM/KMS.
 5. `just ui-vm-run` is the fast local macOS loop for compositor and shell UX work; it is intentionally outside CI.
+6. `scripts/shadowctl` plus `just ui-vm-doctor` / `ui-vm-state` / `ui-vm-wait-ready` / `ui-vm-screenshot` provide the current CLI observability layer for the local VM.
 
 This is intentionally not yet a full custom userland boot. The repo is using the smallest reliable transport at each layer: first-stage wrapper for `/init` proof, then post-boot guest session launch for display and compositor iteration.
+
+For the local VM specifically, the first visible frame can lag behind boot because the guest may still be compiling `shadow-ui-desktop` or app binaries from the mounted source tree. The current operator contract is:
+
+1. `just ui-vm-run` launches the VM window.
+2. `just ui-vm-doctor` explains whether the compositor is still compiling or already live.
+3. `just ui-vm-wait-ready` blocks until the compositor control socket and the nested Wayland session are usable.
+4. `just ui-vm-screenshot` captures the current QEMU window via QMP for outside-in inspection.

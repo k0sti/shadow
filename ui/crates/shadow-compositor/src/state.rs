@@ -45,6 +45,7 @@ pub struct ShadowCompositor {
     pub seat: Seat<Self>,
     launched_apps: HashMap<AppId, Child>,
     surface_apps: HashMap<WlSurface, AppId>,
+    focused_app: Option<AppId>,
     next_window_offset: i32,
     pub mapped_windows: usize,
     exit_on_first_window: bool,
@@ -89,6 +90,7 @@ impl ShadowCompositor {
             seat,
             launched_apps: HashMap::new(),
             surface_apps: HashMap::new(),
+            focused_app: None,
             next_window_offset: 0,
             mapped_windows: 0,
             exit_on_first_window: std::env::var_os("SHADOW_COMPOSITOR_EXIT_ON_FIRST_WINDOW")
@@ -121,6 +123,7 @@ impl ShadowCompositor {
         if let Some(window) = window {
             self.space.raise_element(&window, true);
             let focused_surface = window.toplevel().unwrap().wl_surface().clone();
+            self.focused_app = self.surface_apps.get(&focused_surface).copied();
 
             self.space.elements().for_each(|candidate| {
                 let is_active = candidate.toplevel().unwrap().wl_surface() == &focused_surface;
@@ -136,6 +139,7 @@ impl ShadowCompositor {
             candidate.set_activated(false);
             candidate.toplevel().unwrap().send_pending_configure();
         });
+        self.focused_app = None;
         keyboard.set_focus(self, Option::<WlSurface>::None, serial);
     }
 
@@ -163,10 +167,24 @@ impl ShadowCompositor {
 
     pub fn remember_surface_app(&mut self, surface: &WlSurface, app_id: AppId) {
         self.surface_apps.insert(surface.clone(), app_id);
+        if self
+            .space
+            .elements()
+            .last()
+            .and_then(|window| window.toplevel())
+            .map(|toplevel| toplevel.wl_surface() == surface)
+            .unwrap_or(false)
+        {
+            self.focused_app = Some(app_id);
+        }
     }
 
     pub fn forget_surface(&mut self, surface: &WlSurface) -> Option<AppId> {
-        self.surface_apps.remove(surface)
+        let removed = self.surface_apps.remove(surface);
+        if removed == self.focused_app {
+            self.focused_app = None;
+        }
+        removed
     }
 
     pub fn spawn_demo_client(&mut self) -> std::io::Result<()> {
@@ -175,14 +193,18 @@ impl ShadowCompositor {
         Ok(())
     }
 
-    pub fn handle_control_request(&mut self, request: ControlRequest) -> std::io::Result<()> {
+    pub fn handle_control_request(&mut self, request: ControlRequest) -> std::io::Result<String> {
         match request {
-            ControlRequest::Launch { app_id } => self.launch_or_focus_app(app_id),
+            ControlRequest::Launch { app_id } => {
+                self.launch_or_focus_app(app_id)?;
+                Ok("ok\n".to_string())
+            }
             ControlRequest::Home => {
                 self.focus_window(None, self.next_serial());
-                Ok(())
+                Ok("ok\n".to_string())
             }
-            ControlRequest::Switcher => Ok(()),
+            ControlRequest::Switcher => Ok("ok\n".to_string()),
+            ControlRequest::State => Ok(self.control_state_response()),
         }
     }
 
@@ -226,6 +248,42 @@ impl ShadowCompositor {
     fn reap_children(&mut self) {
         self.launched_apps
             .retain(|_, child| matches!(child.try_wait(), Ok(None)));
+    }
+
+    fn control_state_response(&mut self) -> String {
+        self.reap_children();
+
+        let focused = self.focused_app.map(AppId::as_str).unwrap_or("");
+        let mapped = self.mapped_app_ids();
+        let launched = self.launched_app_ids();
+        format!(
+            "focused={focused}\nmapped={mapped}\nlaunched={launched}\nwindows={}\nsocket={}\n",
+            self.mapped_windows,
+            self.socket_name.to_string_lossy(),
+        )
+    }
+
+    fn mapped_app_ids(&self) -> String {
+        let mut app_ids: Vec<_> = self
+            .surface_apps
+            .values()
+            .copied()
+            .map(AppId::as_str)
+            .collect();
+        app_ids.sort_unstable();
+        app_ids.dedup();
+        app_ids.join(",")
+    }
+
+    fn launched_app_ids(&self) -> String {
+        let mut app_ids: Vec<_> = self
+            .launched_apps
+            .keys()
+            .copied()
+            .map(AppId::as_str)
+            .collect();
+        app_ids.sort_unstable();
+        app_ids.join(",")
     }
 
     fn init_wayland_listener(display: Display<Self>, event_loop: &mut EventLoop<Self>) -> OsString {
