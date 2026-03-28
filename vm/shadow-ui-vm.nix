@@ -18,7 +18,8 @@ nixpkgs.lib.nixosSystem {
         logDir = "${stateDir}/log";
         runtimeLibDir = "${stateDir}/runtime-libs";
         sessionLog = "${logDir}/shadow-ui-session.log";
-        compositorLog = "${logDir}/shadow-compositor.log";
+        westonLog = "${logDir}/weston.log";
+        westonConfig = "${stateDir}/weston.ini";
         sessionEnv = "${stateDir}/shadow-ui-session-env.sh";
         guestToolPkgs = with pkgs; [
           cargo
@@ -30,6 +31,7 @@ nixpkgs.lib.nixosSystem {
           pkg-config
           python3
           rustc
+          weston
         ];
         guestRuntimeLibs = with pkgs; [
           bzip2
@@ -78,6 +80,7 @@ nixpkgs.lib.nixosSystem {
             export RUST_BACKTRACE=1
             uid="$(id -u)"
             export XDG_RUNTIME_DIR="/run/user/$uid"
+            export GDK_BACKEND=wayland
 
             mkdir -p "$HOME" "$XDG_CACHE_HOME" "$CARGO_TARGET_DIR" ${logDir} ${runtimeLibDir} "$XDG_RUNTIME_DIR"
             chmod 700 "$XDG_RUNTIME_DIR"
@@ -98,6 +101,8 @@ nixpkgs.lib.nixosSystem {
             export LIBGL_DRIVERS_PATH="$LIBGL_DRIVERS_PATH"
             export RUST_BACKTRACE="$RUST_BACKTRACE"
             export XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR"
+            export DBUS_SESSION_BUS_ADDRESS="''${DBUS_SESSION_BUS_ADDRESS:-}"
+            export GDK_BACKEND="$GDK_BACKEND"
             EOF
             cd ${repoDir}
             : >${sessionLog}
@@ -107,77 +112,63 @@ nixpkgs.lib.nixosSystem {
             echo "cwd: $(pwd)"
             echo "WAYLAND_DISPLAY=''${WAYLAND_DISPLAY:-unset}"
             echo "XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR"
+            cat >${westonConfig} <<EOF
+            [core]
+            idle-time=0
 
-            socket_snapshot="$(mktemp)"
-            find "$XDG_RUNTIME_DIR" -maxdepth 1 -type s -name 'wayland-*' -printf '%f\n' | sort -V >"$socket_snapshot"
+            [output]
+            name=Virtual-1
+            transform=rotate-90
+            EOF
 
-            : >${compositorLog}
-            cargo run --locked --manifest-path ui/Cargo.toml -p shadow-compositor >${compositorLog} 2>&1 &
-            compositor_pid=$!
+            ${pkgs.weston}/bin/weston \
+              --backend=drm \
+              --idle-time=0 \
+              --socket=wayland-0 \
+              --config=${westonConfig} \
+              >${westonLog} 2>&1 &
+            weston_pid=$!
 
             cleanup() {
-              if kill -0 "$compositor_pid" 2>/dev/null; then
-                kill "$compositor_pid" 2>/dev/null || true
-                wait "$compositor_pid" 2>/dev/null || true
-              fi
-              rm -f "$socket_snapshot"
+              kill "$weston_pid" 2>/dev/null || true
+              wait "$weston_pid" 2>/dev/null || true
             }
             trap cleanup EXIT
 
-            control_socket="$XDG_RUNTIME_DIR/shadow-control.sock"
-            for _ in $(seq 1 900); do
-              if [[ -S "$control_socket" ]]; then
+            for _ in $(seq 1 120); do
+              if [[ -S "$XDG_RUNTIME_DIR/wayland-0" ]]; then
+                export WAYLAND_DISPLAY=wayland-0
                 break
-              fi
-              if ! kill -0 "$compositor_pid" 2>/dev/null; then
-                echo "shadow-ui-session: compositor exited before control socket appeared" >&2
-                echo "shadow-ui-session: compositor log:" >&2
-                head -n 200 ${compositorLog} >&2 || true
-                wait "$compositor_pid"
-                exit 1
               fi
               sleep 1
             done
 
-            if [[ ! -S "$control_socket" ]]; then
-              echo "shadow-ui-session: timed out waiting for compositor control socket" >&2
+            if [[ ! -S "$XDG_RUNTIME_DIR/wayland-0" ]]; then
+              echo "shadow-ui-session: weston did not create wayland-0" >&2
+              echo "shadow-ui-session: weston log:" >&2
+              cat ${westonLog} >&2 || true
               exit 1
             fi
 
-            nested_wayland=""
-            for _ in $(seq 1 900); do
-              nested_wayland="$(
-                find "$XDG_RUNTIME_DIR" -maxdepth 1 -type s -name 'wayland-*' -printf '%f\n' \
-                  | sort -V \
-                  | comm -13 "$socket_snapshot" - \
-                  | tail -n 1
-              )"
-              if [[ -n "$nested_wayland" ]]; then
-                break
-              fi
-              if ! kill -0 "$compositor_pid" 2>/dev/null; then
-                echo "shadow-ui-session: compositor exited before nested wayland socket appeared" >&2
-                echo "shadow-ui-session: compositor log:" >&2
-                head -n 200 ${compositorLog} >&2 || true
-                wait "$compositor_pid"
-                exit 1
+            cargo run --locked --manifest-path ui/Cargo.toml -p shadow-ui-desktop &
+            shell_pid=$!
+            shell_logged=0
+
+            while kill -0 "$weston_pid" 2>/dev/null; do
+              if [[ "$shell_logged" -eq 0 ]] && ! kill -0 "$shell_pid" 2>/dev/null; then
+                wait "$shell_pid" || true
+                echo "shadow-ui-session: shadow-ui-desktop exited"
+                shell_logged=1
               fi
               sleep 1
             done
 
-            if [[ -z "$nested_wayland" ]]; then
-              echo "shadow-ui-session: timed out waiting for nested wayland socket" >&2
-              exit 1
-            fi
-
-            echo "shadow-ui-session: nested wayland socket ready at $nested_wayland"
-            wait "$compositor_pid"
+            wait "$weston_pid"
           '';
         };
         initialSession = {
           user = "shadow";
-          command =
-            "${pkgs.dbus}/bin/dbus-run-session ${pkgs.cage}/bin/cage -- ${shadowUiSession}/bin/shadow-ui-session";
+          command = "${pkgs.dbus}/bin/dbus-run-session ${shadowUiSession}/bin/shadow-ui-session";
         };
       in {
         networking.hostName = "shadow-ui-vm";
@@ -236,8 +227,7 @@ nixpkgs.lib.nixosSystem {
           script = ''
             for _ in $(seq 1 600); do
               process_snapshot="$(ps -eo args=)"
-              if grep -Fq '/bin/cage --' <<<"$process_snapshot" \
-                && grep -Eq '(^|/)shadow-compositor($| )|cargo run( --locked)? --manifest-path ui/Cargo.toml -p shadow-compositor' <<<"$process_snapshot"; then
+              if grep -Eq '(^|/)weston($| )|/bin/weston($| )' <<<"$process_snapshot"; then
                 echo "shadow-ui smoke: compositor is running"
                 exit 0
               fi
@@ -246,7 +236,7 @@ nixpkgs.lib.nixosSystem {
 
             echo "shadow-ui smoke: compositor did not appear" >&2
             echo "shadow-ui smoke: relevant processes:" >&2
-            ps -ef | grep -E 'greetd|cage|shadow-|cargo run --manifest-path ui/Cargo.toml' | grep -v grep >&2 || true
+            ps -ef | grep -E 'greetd|weston|shadow-|cargo run --manifest-path ui/Cargo.toml' | grep -v grep >&2 || true
             echo "shadow-ui smoke: greetd status:" >&2
             systemctl --no-pager --full status greetd.service >&2 || true
             echo "shadow-ui smoke: greetd journal:" >&2

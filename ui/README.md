@@ -52,9 +52,9 @@ On macOS, the preferred compositor loop is the local VM:
 just ui-vm-run
 ```
 
-That launches a Linux guest in a native macOS window using `microvm.nix` with QEMU/HVF and a Cocoa display backend. QEMU is the chosen host path here because it gives us both a native window on macOS and a simple 9p live share of this repo into the guest, which keeps the compositor loop tight while the codebase is still moving quickly. The guest shares this live worktree into `/work/shadow`, autologins into a minimal `cage` session, starts `shadow-compositor`, waits for the nested Wayland socket and compositor control socket, and then starts the `shadow-ui-desktop` home shell inside that compositor.
+That launches a Linux guest in a native macOS window using `microvm.nix` with QEMU/HVF and a Cocoa display backend. QEMU is the chosen host path here because it gives us both a native window on macOS and a simple 9p live share of this repo into the guest, which keeps the compositor loop tight while the codebase is still moving quickly. The guest shares this live worktree into `/work/shadow`, autologins through `greetd`, starts a dedicated `weston` session, rotates the virtual output into portrait mode so the phone shell fits cleanly, and runs `shadow-ui-desktop` as a normal Wayland client inside that session.
 
-The VM recreates its writable `/nix/store` overlay on each boot. Guest persistence lives in `.shadow-vm/shadow-ui-state.img`, which keeps the Cargo target dir, app state, and guest logs warm across restarts. The guest session runs `cargo run --locked --manifest-path ui/Cargo.toml -p shadow-compositor` directly inside the shared repo; it does not shell into a nested guest `nix develop`.
+The VM recreates its writable `/nix/store` overlay on each boot. Guest persistence lives in `.shadow-vm/shadow-ui-state.img`, which keeps the Cargo target dir, app state, and guest logs warm across restarts. The guest session runs `cargo run --locked --manifest-path ui/Cargo.toml -p shadow-ui-desktop` directly inside the shared repo; it does not shell into a nested guest `nix develop`.
 
 To stop it cleanly from another terminal:
 
@@ -77,10 +77,10 @@ The first guest boot or the first launch after dependency changes can spend some
 
 The expected Linux flow is now:
 
-- VM boots into the home shell
+- VM boots into a portrait `weston` session with the home shell visible
 - click `Web`, `Blitz`, `Counter`, or `Status` to open a demo app
-- use the keyboard `Home` key to return to the shell from any foreground app
-- `shadow-blitz-demo` also exposes a native `Home` button because its event bridge already reaches the compositor control socket
+- the direct guest launch helpers can also start `shadow-cog-demo` and `shadow-blitz-demo` without going through the shell
+- app windows are ordinary Wayland clients in the same `weston` session; there is no compositor control socket in this demo path
 
 If the shell is still compiling or you want to bypass it entirely, the guest launch recipes above start the two prototype apps directly against the running compositor using the same cached Cargo target dir and runtime library environment as the main guest session.
 

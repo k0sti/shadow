@@ -23,15 +23,15 @@ export CARGO_BUILD_JOBS="\${CARGO_BUILD_JOBS:-1}"
 
 load_session_env_from_process() {
   local session_pid
-  session_pid="\$(pgrep -o -f 'shadow-compositor' || true)"
+  session_pid="\$(pgrep -o -f 'shadow-ui-desktop|shadow-compositor' || true)"
   if [[ -z "\$session_pid" ]]; then
-    echo "ui-vm-app-run: could not find a running shadow-compositor to recover guest env" >&2
+    echo "ui-vm-app-run: could not find a running UI session process to recover guest env" >&2
     exit 1
   fi
 
   while IFS= read -r -d '' entry; do
     case "\$entry" in
-      HOME=*|XDG_CACHE_HOME=*|CARGO_TARGET_DIR=*|PKG_CONFIG_PATH=*|LD_LIBRARY_PATH=*|LIBRARY_PATH=*|NIX_LDFLAGS=*|LIBGL_DRIVERS_PATH=*|RUST_BACKTRACE=*|XDG_RUNTIME_DIR=*)
+      HOME=*|XDG_CACHE_HOME=*|CARGO_TARGET_DIR=*|PKG_CONFIG_PATH=*|LD_LIBRARY_PATH=*|LIBRARY_PATH=*|NIX_LDFLAGS=*|LIBGL_DRIVERS_PATH=*|RUST_BACKTRACE=*|XDG_RUNTIME_DIR=*|DBUS_SESSION_BUS_ADDRESS=*|GDK_BACKEND=*)
         export "\$entry"
         ;;
     esac
@@ -47,15 +47,8 @@ else
 fi
 
 wayland_socket="\$(find "\$XDG_RUNTIME_DIR" -maxdepth 1 -type s -name 'wayland-*' -printf '%f\n' | sort -V | tail -n 1)"
-control_socket="\$XDG_RUNTIME_DIR/shadow-control.sock"
-
 if [[ -z "\$wayland_socket" ]]; then
   echo "ui-vm-app-run: no wayland socket found in \$XDG_RUNTIME_DIR" >&2
-  exit 1
-fi
-
-if [[ ! -S "\$control_socket" ]]; then
-  echo "ui-vm-app-run: missing compositor control socket \$control_socket" >&2
   exit 1
 fi
 
@@ -82,7 +75,6 @@ fi
 cd /work/shadow
 nohup env \
   WAYLAND_DISPLAY="\$wayland_socket" \
-  SHADOW_COMPOSITOR_CONTROL="\$control_socket" \
   cargo run --locked --manifest-path ui/Cargo.toml -p "\$package" \
   >"\$log_file" 2>&1 </dev/null &
 
