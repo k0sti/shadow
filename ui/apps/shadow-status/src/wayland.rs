@@ -977,7 +977,7 @@ fn draw_text(
                 for dy in 0..scale {
                     for dx in 0..scale {
                         let px = cursor_x + col * scale + dx;
-                        let py = y + row as i32 * scale + dy;
+                        let py = y + (7 - row) as i32 * scale + dy;
                         if px < 0 || py < 0 || px >= width as i32 || py >= height as i32 {
                             continue;
                         }

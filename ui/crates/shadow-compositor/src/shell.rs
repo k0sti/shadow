@@ -30,7 +30,9 @@ impl ShellSurface {
                 Fourcc::Argb8888,
                 (width as i32, height as i32),
                 1,
-                Transform::Normal,
+                // MemoryRenderBuffer content lands vertically inverted in the nested
+                // winit/GLES path unless we declare the buffer's transform explicitly.
+                Transform::Flipped180,
                 None,
             ),
             renderer: SoftwareRenderer::new(width, height),
@@ -48,7 +50,7 @@ impl ShellSurface {
             Fourcc::Argb8888,
             (width as i32, height as i32),
             1,
-            Transform::Normal,
+            Transform::Flipped180,
             None,
         );
         self.renderer.resize(width, height);

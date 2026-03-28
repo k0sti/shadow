@@ -9,6 +9,7 @@ set -euo pipefail
 STATE_DIR="/var/lib/shadow-ui"
 COMPOSITOR_ENV_FILE="$STATE_DIR/shadow-compositor-session-env.sh"
 LOG_FILE="$STATE_DIR/log/shadow-compositor.log"
+RUNTIME_DIR="/run/user/1000"
 
 matching_processes() {
   ps -eo pid=,comm=,args= | awk '
@@ -26,6 +27,11 @@ matching_processes() {
 pids="$(matching_processes)"
 if [[ -z "$pids" ]]; then
   rm -f "$COMPOSITOR_ENV_FILE"
+  rm -f "$RUNTIME_DIR/shadow-control.sock"
+  find "$RUNTIME_DIR" -maxdepth 1 \
+    \( -type s -o -type f \) \
+    \( -name 'wayland-[1-9]*' -o -name 'wayland-[1-9]*.lock' \) \
+    -delete 2>/dev/null || true
   echo "ui-vm-shadow-stop: shadow-compositor is not running"
   exit 0
 fi
@@ -38,6 +44,11 @@ done <<<"$pids"
 for _ in $(seq 1 20); do
   if [[ -z "$(matching_processes)" ]]; then
     rm -f "$COMPOSITOR_ENV_FILE"
+    rm -f "$RUNTIME_DIR/shadow-control.sock"
+    find "$RUNTIME_DIR" -maxdepth 1 \
+      \( -type s -o -type f \) \
+      \( -name 'wayland-[1-9]*' -o -name 'wayland-[1-9]*.lock' \) \
+      -delete 2>/dev/null || true
     echo "ui-vm-shadow-stop: stopped shadow-compositor"
     exit 0
   fi
@@ -50,6 +61,11 @@ while read -r pid; do
 done <<<"$(matching_processes)"
 
 rm -f "$COMPOSITOR_ENV_FILE"
+rm -f "$RUNTIME_DIR/shadow-control.sock"
+find "$RUNTIME_DIR" -maxdepth 1 \
+  \( -type s -o -type f \) \
+  \( -name 'wayland-[1-9]*' -o -name 'wayland-[1-9]*.lock' \) \
+  -delete 2>/dev/null || true
 echo "ui-vm-shadow-stop: force-stopped shadow-compositor"
 tail -n 80 "$LOG_FILE" 2>/dev/null || true
 EOF

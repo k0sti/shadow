@@ -217,7 +217,7 @@ fn draw_glyph(
                 continue;
             }
 
-            let cell_x = x + (7 - col) as f32 * scale;
+            let cell_x = x + col as f32 * scale;
             let cell_y = y + row as f32 * scale;
             let left = cell_x.max(clip_left).floor() as i32;
             let top = cell_y.max(clip_top).floor() as i32;

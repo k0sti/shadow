@@ -32,9 +32,42 @@ matching_processes() {
   '
 }
 
+recover_nested_env() {
+  local control_socket="\$XDG_RUNTIME_DIR/shadow-control.sock"
+  local nested_wayland
+  nested_wayland="\$(
+    find "\$XDG_RUNTIME_DIR" -maxdepth 1 -type s -name 'wayland-*' ! -name 'wayland-0' -printf '%f\n' \
+      | sort -V \
+      | tail -n 1
+  )"
+
+  if [[ -z "\$nested_wayland" || ! -S "\$control_socket" ]]; then
+    return 1
+  fi
+
+  cat >"\$COMPOSITOR_ENV_FILE" <<ENV
+export HOME="\$HOME"
+export XDG_CACHE_HOME="\$XDG_CACHE_HOME"
+export CARGO_TARGET_DIR="\$CARGO_TARGET_DIR"
+export PKG_CONFIG_PATH="\$PKG_CONFIG_PATH"
+export LD_LIBRARY_PATH="\$LD_LIBRARY_PATH"
+export LIBRARY_PATH="\$LIBRARY_PATH"
+export NIX_LDFLAGS="\$NIX_LDFLAGS"
+export LIBGL_DRIVERS_PATH="\$LIBGL_DRIVERS_PATH"
+export RUST_BACKTRACE="\$RUST_BACKTRACE"
+export XDG_RUNTIME_DIR="\$XDG_RUNTIME_DIR"
+export DBUS_SESSION_BUS_ADDRESS="\${DBUS_SESSION_BUS_ADDRESS:-}"
+export GDK_BACKEND="\${GDK_BACKEND:-}"
+export WAYLAND_DISPLAY="\$nested_wayland"
+export SHADOW_COMPOSITOR_CONTROL="\$control_socket"
+ENV
+}
+
 if [[ ! -f "\$COMPOSITOR_ENV_FILE" ]]; then
-  echo "ui-vm-shadow-app-run: missing nested compositor env; run just ui-vm-shadow-run first" >&2
-  exit 1
+  if ! recover_nested_env; then
+    echo "ui-vm-shadow-app-run: missing nested compositor env; run just ui-vm-shadow-run first" >&2
+    exit 1
+  fi
 fi
 
 # shellcheck disable=SC1090

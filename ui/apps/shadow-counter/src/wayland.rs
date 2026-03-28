@@ -784,7 +784,7 @@ fn draw_glyph(
             }
 
             let px = x + (col * scale);
-            let py = y + (row as i32 * scale);
+            let py = y + ((7 - row) as i32 * scale);
             fill_rect(canvas, width, height, px, py, scale, scale, color);
         }
     }
