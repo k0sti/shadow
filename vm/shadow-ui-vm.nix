@@ -118,7 +118,7 @@ nixpkgs.lib.nixosSystem {
 
             [output]
             name=Virtual-1
-            transform=rotate-90
+            transform=rotate-270
             EOF
 
             ${pkgs.weston}/bin/weston \
