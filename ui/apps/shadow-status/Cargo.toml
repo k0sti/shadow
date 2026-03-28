@@ -1,0 +1,20 @@
+[package]
+name = "shadow-status"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+bytemuck.workspace = true
+glyphon.workspace = true
+shadow-ui-core = { path = "../../crates/shadow-ui-core" }
+shadow-ui-wgpu = { path = "../../crates/shadow-ui-wgpu" }
+
+[target.'cfg(not(target_os = "linux"))'.dependencies]
+pollster.workspace = true
+wgpu.workspace = true
+winit.workspace = true
+
+[target.'cfg(target_os = "linux")'.dependencies]
+font8x8.workspace = true
+smithay-client-toolkit = "0.20.0"
+wayland-client = "0.31.13"

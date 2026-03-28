@@ -42,6 +42,62 @@ cf-logs-follow kind="kernel":
 cf-kill:
 	@scripts/cf_kill.sh
 
+# Run UI formatting and compile checks inside the UI shell
+ui-check:
+	@scripts/ui_check.sh
+
+# Run the Shadow UI prototype inside the UI shell
+ui-run:
+	@nix develop --accept-flake-config .#ui -c cargo run --manifest-path ui/Cargo.toml -p shadow-ui-desktop
+
+# Run the nested Smithay compositor host (Linux/Wayland only)
+ui-compositor-run:
+	@nix develop --accept-flake-config .#ui -c cargo run --manifest-path ui/Cargo.toml -p shadow-compositor
+
+# Run the demo counter app directly
+ui-counter-run:
+	@nix develop --accept-flake-config .#ui -c cargo run --manifest-path ui/Cargo.toml -p shadow-counter
+
+# Run the browser-engine demo app directly
+ui-cog-run:
+	@nix develop --accept-flake-config .#ui -c cargo run --manifest-path ui/Cargo.toml -p shadow-cog-demo
+
+# Run the Blitz + Deno demo app directly
+ui-blitz-run:
+	@nix develop --accept-flake-config .#ui -c cargo run --manifest-path ui/Cargo.toml -p shadow-blitz-demo
+
+# Run the local Linux UI VM in a native macOS window
+ui-vm-run:
+	@scripts/ui_vm_run.sh
+
+# Stop the local Linux UI VM
+ui-vm-stop:
+	@scripts/ui_vm_stop.sh
+
+# SSH into the local Linux UI VM
+ui-vm-ssh *args='':
+	@scripts/ui_vm_ssh.sh {{args}}
+
+# Show the guest compositor session log
+ui-vm-logs:
+	@scripts/ui_vm_logs.sh
+
+# Show guest smoke status and relevant Shadow UI processes
+ui-vm-status:
+	@scripts/ui_vm_status.sh
+
+# Show guest greetd and smoke-service journal output
+ui-vm-journal:
+	@scripts/ui_vm_journal.sh
+
+# Launch the browser-engine prototype inside the guest compositor
+ui-vm-cog-run:
+	@scripts/ui_vm_app_run.sh shadow-cog-demo
+
+# Launch the native-renderer + Deno prototype inside the guest compositor
+ui-vm-blitz-run:
+	@scripts/ui_vm_app_run.sh shadow-blitz-demo
+
 # Run the fast local verification gate
 pre-commit:
 	@scripts/pre_commit.sh

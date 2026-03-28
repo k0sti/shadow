@@ -1,12 +1,28 @@
 {
   description = "Shadow boot bring-up tooling";
 
-  inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
+  nixConfig = {
+    extra-substituters = [ "https://microvm.cachix.org" ];
+    extra-trusted-public-keys = [ "microvm.cachix.org-1:oXnBc6hRE3eX5rSYdRyMYXnfzcCxC7yKPTbZXALsqys=" ];
   };
 
-  outputs = { self, nixpkgs }:
+  inputs = {
+    nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
+    microvm = {
+      url = "github:microvm-nix/microvm.nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+  };
+
+  outputs = { self, nixpkgs, microvm }:
     let
+      lib = nixpkgs.lib;
+      uiVmSourceEnv = builtins.getEnv "SHADOW_UI_VM_SOURCE";
+      uiVmSource =
+        if uiVmSourceEnv != "" then
+          uiVmSourceEnv
+        else
+          throw "Set SHADOW_UI_VM_SOURCE and build with --impure before using the ui-vm package.";
       systems = [
         "x86_64-linux"
         "aarch64-linux"
@@ -14,8 +30,14 @@
         "aarch64-darwin"
       ];
       forAllSystems = f:
-        nixpkgs.lib.genAttrs systems (system:
+        lib.genAttrs systems (system:
           f { pkgs = import nixpkgs { inherit system; }; });
+      mkUnavailablePackage = pkgs: name: message:
+        pkgs.writeShellScriptBin name ''
+          echo ${builtins.toJSON message} >&2
+          exit 1
+        '';
+      darwinSystems = builtins.filter (system: lib.hasSuffix "-darwin" system) systems;
       mkInitWrapper = pkgs:
         let
           cross = pkgs.pkgsCross.musl64;
@@ -61,13 +83,85 @@
             export SHADOW_BOOTIMG_SHELL=1
           '';
         };
+      mkUiShell = pkgs:
+        let
+          toolPkgs = with pkgs; [
+            cargo
+            clang
+            clippy
+            deno
+            just
+            pkg-config
+            python3
+            rustc
+            rustfmt
+          ];
+          runtimeLibs = pkgs.lib.optionals pkgs.stdenv.isLinux (with pkgs; [
+            bzip2
+            expat
+            fontconfig
+            freetype
+            libdrm
+            libglvnd
+            libpng
+            libX11
+            libXcursor
+            libXi
+            libXrandr
+            libxkbcommon
+            mesa
+            vulkan-loader
+            wayland
+            wayland-protocols
+            zlib
+          ]);
+          shellPkgs = toolPkgs ++ runtimeLibs ++ pkgs.lib.optionals pkgs.stdenv.isLinux [ pkgs.epiphany ];
+          pkgConfigPath = pkgs.lib.concatStringsSep ":" [
+            (pkgs.lib.makeSearchPathOutput "dev" "lib/pkgconfig" runtimeLibs)
+            (pkgs.lib.makeSearchPathOutput "dev" "share/pkgconfig" runtimeLibs)
+            (pkgs.lib.makeSearchPathOutput "out" "lib/pkgconfig" runtimeLibs)
+            (pkgs.lib.makeSearchPathOutput "out" "share/pkgconfig" runtimeLibs)
+          ];
+          libraryPath = pkgs.lib.makeLibraryPath runtimeLibs;
+          linkFlags = pkgs.lib.concatMapStringsSep " " (pkg: "-L${pkg}/lib") runtimeLibs;
+        in pkgs.mkShell {
+          packages = shellPkgs;
+
+          shellHook = ''
+            export PATH="${pkgs.lib.makeBinPath toolPkgs}:$PATH"
+            export IN_NIX_SHELL=1
+            export SHADOW_UI_SHELL=1
+            export PKG_CONFIG_PATH="${pkgConfigPath}:''${PKG_CONFIG_PATH:-}"
+            ${pkgs.lib.optionalString pkgs.stdenv.isLinux ''
+              export LD_LIBRARY_PATH="${libraryPath}:''${LD_LIBRARY_PATH:-}"
+              export LIBRARY_PATH="${libraryPath}:''${LIBRARY_PATH:-}"
+              export NIX_LDFLAGS="${linkFlags} ''${NIX_LDFLAGS:-}"
+            ''}
+          '';
+        };
     in {
+      nixosConfigurations =
+        lib.listToAttrs (map (hostSystem: {
+          name = "${hostSystem}-shadow-ui-vm";
+          value = import ./vm/shadow-ui-vm.nix {
+            inherit hostSystem microvm nixpkgs;
+            repoSource = uiVmSource;
+          };
+        }) darwinSystems);
       devShells = forAllSystems ({ pkgs }: {
         bootimg = mkBootimgShell pkgs;
+        ui = mkUiShell pkgs;
+        # Keep the default on the boot flow to avoid changing the existing bring-up entrypoint.
         default = mkBootimgShell pkgs;
       });
       packages = forAllSystems ({ pkgs }: {
         init-wrapper = mkInitWrapper pkgs;
+        ui-vm =
+          if pkgs.stdenv.isDarwin then
+            self.nixosConfigurations."${pkgs.stdenv.hostPlatform.system}-shadow-ui-vm".config.microvm.declaredRunner
+          else
+            mkUnavailablePackage pkgs "shadow-ui-vm-unavailable"
+              "ui-vm is only available on macOS hosts. Use just ui-vm-run from an Apple Silicon or Intel Mac.";
         default = mkInitWrapper pkgs;
       });
     };

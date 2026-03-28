@@ -9,7 +9,8 @@ ensure_bootimg_shell "$@"
 cd "$(repo_root)"
 
 bash -n scripts/*.sh
-nix flake check --no-build
+SHADOW_UI_VM_SOURCE="$PWD" nix flake check --no-build --impure --accept-flake-config
+just ui-check
 just artifacts-fetch
 just init-boot-repack
 scripts/assert_repacked_identity.sh

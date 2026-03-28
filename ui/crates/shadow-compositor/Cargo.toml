@@ -1,0 +1,14 @@
+[package]
+name = "shadow-compositor"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+chrono.workspace = true
+shadow-ui-core = { path = "../shadow-ui-core" }
+shadow-ui-software = { path = "../shadow-ui-software" }
+tracing.workspace = true
+tracing-subscriber.workspace = true
+
+[target.'cfg(target_os = "linux")'.dependencies]
+smithay = { git = "https://github.com/Smithay/smithay", rev = "5816a1b40e52d06c5638368beb684f3663012857", default-features = false, features = ["backend_winit", "desktop", "wayland_frontend"] }

@@ -1,4 +1,6 @@
 .cuttlefish-instance
+.shadow-vm/
 artifacts/
 build/
 __pycache__/
+.direnv/
