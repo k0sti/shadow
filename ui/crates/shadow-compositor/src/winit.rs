@@ -83,7 +83,7 @@ pub fn init_winit(
 
                 {
                     let (renderer, mut framebuffer) = backend.bind().expect("bind backend");
-                    let render_shell = state.space.elements().next().is_none();
+                    let render_shell = state.shell.foreground_app().is_none();
                     render::render_output(
                         &output,
                         &state.space,

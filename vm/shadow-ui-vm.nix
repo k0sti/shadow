@@ -18,6 +18,7 @@ nixpkgs.lib.nixosSystem {
         logDir = "${stateDir}/log";
         runtimeLibDir = "${stateDir}/runtime-libs";
         sessionLog = "${logDir}/shadow-ui-session.log";
+        compositorLog = "${logDir}/shadow-compositor.log";
         sessionEnv = "${stateDir}/shadow-ui-session-env.sh";
         guestToolPkgs = with pkgs; [
           cargo
@@ -75,9 +76,11 @@ nixpkgs.lib.nixosSystem {
             export NIX_LDFLAGS="${guestLinkFlags} ''${NIX_LDFLAGS:-}"
             export LIBGL_DRIVERS_PATH="${pkgs.mesa}/lib/dri:''${LIBGL_DRIVERS_PATH:-}"
             export RUST_BACKTRACE=1
-            export XDG_RUNTIME_DIR="''${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+            uid="$(id -u)"
+            export XDG_RUNTIME_DIR="/run/user/$uid"
 
-            mkdir -p "$HOME" "$XDG_CACHE_HOME" "$CARGO_TARGET_DIR" ${logDir} ${runtimeLibDir}
+            mkdir -p "$HOME" "$XDG_CACHE_HOME" "$CARGO_TARGET_DIR" ${logDir} ${runtimeLibDir} "$XDG_RUNTIME_DIR"
+            chmod 700 "$XDG_RUNTIME_DIR"
             # On the shared /nix/store mount under macOS/QEMU, libglvnd soname symlinks can
             # resolve poorly through the overlay. Stage concrete copies into writable state.
             cp -fL ${pkgs.libglvnd}/lib/libEGL.so.1 ${runtimeLibDir}/libEGL.so.1
@@ -108,15 +111,11 @@ nixpkgs.lib.nixosSystem {
             socket_snapshot="$(mktemp)"
             find "$XDG_RUNTIME_DIR" -maxdepth 1 -type s -name 'wayland-*' -printf '%f\n' | sort -V >"$socket_snapshot"
 
-            cargo run --locked --manifest-path ui/Cargo.toml -p shadow-compositor &
+            : >${compositorLog}
+            cargo run --locked --manifest-path ui/Cargo.toml -p shadow-compositor >${compositorLog} 2>&1 &
             compositor_pid=$!
-            shell_pid=""
 
             cleanup() {
-              if [[ -n "$shell_pid" ]] && kill -0 "$shell_pid" 2>/dev/null; then
-                kill "$shell_pid" 2>/dev/null || true
-                wait "$shell_pid" 2>/dev/null || true
-              fi
               if kill -0 "$compositor_pid" 2>/dev/null; then
                 kill "$compositor_pid" 2>/dev/null || true
                 wait "$compositor_pid" 2>/dev/null || true
@@ -132,6 +131,8 @@ nixpkgs.lib.nixosSystem {
               fi
               if ! kill -0 "$compositor_pid" 2>/dev/null; then
                 echo "shadow-ui-session: compositor exited before control socket appeared" >&2
+                echo "shadow-ui-session: compositor log:" >&2
+                head -n 200 ${compositorLog} >&2 || true
                 wait "$compositor_pid"
                 exit 1
               fi
@@ -156,6 +157,8 @@ nixpkgs.lib.nixosSystem {
               fi
               if ! kill -0 "$compositor_pid" 2>/dev/null; then
                 echo "shadow-ui-session: compositor exited before nested wayland socket appeared" >&2
+                echo "shadow-ui-session: compositor log:" >&2
+                head -n 200 ${compositorLog} >&2 || true
                 wait "$compositor_pid"
                 exit 1
               fi
@@ -167,13 +170,8 @@ nixpkgs.lib.nixosSystem {
               exit 1
             fi
 
-            echo "shadow-ui-session: launching home shell on $nested_wayland"
-            WAYLAND_DISPLAY="$nested_wayland" \
-              SHADOW_COMPOSITOR_CONTROL="$control_socket" \
-              cargo run --locked --manifest-path ui/Cargo.toml -p shadow-ui-desktop &
-            shell_pid=$!
-
-            wait -n "$compositor_pid" "$shell_pid"
+            echo "shadow-ui-session: nested wayland socket ready at $nested_wayland"
+            wait "$compositor_pid"
           '';
         };
         initialSession = {
@@ -239,15 +237,14 @@ nixpkgs.lib.nixosSystem {
             for _ in $(seq 1 600); do
               process_snapshot="$(ps -eo args=)"
               if grep -Fq '/bin/cage --' <<<"$process_snapshot" \
-                && grep -Eq '(^|/)shadow-compositor($| )|cargo run( --locked)? --manifest-path ui/Cargo.toml -p shadow-compositor' <<<"$process_snapshot" \
-                && grep -Eq '(^|/)shadow-ui-desktop($| )|cargo run( --locked)? --manifest-path ui/Cargo.toml -p shadow-ui-desktop' <<<"$process_snapshot"; then
-                echo "shadow-ui smoke: compositor and shell are running"
+                && grep -Eq '(^|/)shadow-compositor($| )|cargo run( --locked)? --manifest-path ui/Cargo.toml -p shadow-compositor' <<<"$process_snapshot"; then
+                echo "shadow-ui smoke: compositor is running"
                 exit 0
               fi
               sleep 1
             done
 
-            echo "shadow-ui smoke: compositor/shell did not appear" >&2
+            echo "shadow-ui smoke: compositor did not appear" >&2
             echo "shadow-ui smoke: relevant processes:" >&2
             ps -ef | grep -E 'greetd|cage|shadow-|cargo run --manifest-path ui/Cargo.toml' | grep -v grep >&2 || true
             echo "shadow-ui smoke: greetd status:" >&2

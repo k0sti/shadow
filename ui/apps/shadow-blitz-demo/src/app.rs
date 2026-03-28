@@ -5,6 +5,7 @@ use blitz_shell::{
 use std::sync::mpsc::Receiver;
 use winit::{
     application::ApplicationHandler,
+    dpi::LogicalSize,
     event::WindowEvent,
     event_loop::ActiveEventLoop,
     window::{WindowAttributes, WindowId},
@@ -125,7 +126,8 @@ impl ApplicationHandler for BlitzTsApplication {
 fn window_attributes() -> WindowAttributes {
     let attributes = WindowAttributes::default()
         .with_title("Shadow Blitz Demo")
-        .with_resizable(false);
+        .with_resizable(false)
+        .with_surface_size(LogicalSize::new(384.0, 720.0));
 
     #[cfg(target_os = "linux")]
     {
