@@ -111,10 +111,16 @@ Fastest guest debug loop:
 
 ```sh
 just ui-vm-status
+just ui-vm-doctor
 just ui-vm-logs
 just ui-vm-journal
+just ui-vm-screenshot
+just ui-vm-shadow-doctor
+scripts/shadowctl shadow status
 just ui-vm-ssh 'ps -ef | grep shadow-'
 ```
+
+`scripts/shadowctl` is a branch-local VM inspector copied from the root repo tooling and adapted for this worktree. Use `scripts/shadowctl vm status`, `scripts/shadowctl vm screenshot`, `scripts/shadowctl shadow status`, and `scripts/shadowctl shadow doctor` when you need a single CLI for the outer Weston session plus the nested `shadow-compositor` path.
 
 ## Controls
 

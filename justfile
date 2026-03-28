@@ -86,9 +86,17 @@ ui-vm-logs:
 ui-vm-status:
 	@scripts/ui_vm_status.sh
 
+# Diagnose the guest session and compositor state
+ui-vm-doctor:
+	@scripts/shadowctl vm doctor
+
 # Show guest greetd and smoke-service journal output
 ui-vm-journal:
 	@scripts/ui_vm_journal.sh
+
+# Capture a QEMU framebuffer screenshot for UI inspection
+ui-vm-screenshot output="build/ui-vm/shadow-ui-vm.ppm":
+	@scripts/shadowctl vm screenshot "{{output}}"
 
 # Launch the browser-engine prototype inside the guest compositor
 ui-vm-cog-run:
@@ -113,6 +121,10 @@ ui-vm-shadow-logs:
 # Show the nested Smithay compositor status and app processes
 ui-vm-shadow-status:
 	@scripts/ui_vm_shadow_status.sh
+
+# Diagnose the nested Smithay compositor state
+ui-vm-shadow-doctor:
+	@scripts/shadowctl shadow doctor
 
 # Launch the counter app inside the nested Smithay compositor
 ui-vm-shadow-counter-run:
