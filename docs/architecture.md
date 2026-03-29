@@ -33,6 +33,7 @@ The current milestones are:
 - prove the compositor can auto-launch one Wayland client in a headless Linux smoke before moving that session logic into the guest
 - prove a late-start Rust guest session can launch `drm_rect` after stock boot, take DRM master from the Android graphics stack, and report a successful modeset on Cuttlefish
 - prove the guest can launch the Rust compositor and one guest Wayland client after stock boot, with matching compositor/client frame checksums and a pulled frame artifact
+- prove the same late-start compositor plus guest-client loop on a stock, bootloader-locked Pixel 4a over plain `adb shell`, without root or `adb root`
 
 The current operator ladder reflects that split:
 
@@ -42,8 +43,21 @@ The current operator ladder reflects that split:
 4. `just cf-guest-ui-drm-smoke` proves the same guest compositor path can also present to DRM/KMS.
 5. `just ui-vm-run` is the fast local macOS loop for compositor and shell UX work; it is intentionally outside CI.
 6. `scripts/shadowctl` plus `just ui-vm-doctor` / `ui-vm-state` / `ui-vm-wait-ready` / `ui-vm-screenshot` provide the current CLI observability layer for the local VM.
+7. `just pixel-doctor` / `pixel-build` / `pixel-push` / `pixel-run` / `pixel-loop` are the current real-device operator ladder for post-boot iteration on a plugged-in Pixel.
 
 This is intentionally not yet a full custom userland boot. The repo is using the smallest reliable transport at each layer: first-stage wrapper for `/init` proof, then post-boot guest session launch for display and compositor iteration.
+
+For the current stock-Pixel path, one implementation detail matters:
+
+1. Stock Android SELinux allows the `shell` user to execute our static Rust binaries from `/data/local/tmp`, but denies creation of pathname Unix sockets there.
+2. The guest compositor therefore has a second Wayland transport mode that skips `XDG_RUNTIME_DIR` sockets and hands the child client an inherited `WAYLAND_SOCKET` file descriptor instead.
+3. That direct-FD transport is the current non-root path on real hardware; the old pathname socket path remains valid for Linux host and VM workflows.
+
+This also sets the current boundary for the Blitz + Deno demo on device:
+
+1. The sibling Blitz prototype launches `deno` as a subprocess and reads its TypeScript entrypoint from the source tree at runtime.
+2. Official Deno Linux arm64 releases are dynamically linked against GNU libc (`/lib/ld-linux-aarch64.so.1`) and do not execute in the stock Android shell environment on the Pixel 4a.
+3. Reaching full Blitz-on-device therefore needs one more runtime layer beyond the current Pixel compositor loop: either a Deno build/package that actually runs on the device shell, or a replacement/embedded JS runtime seam.
 
 For the local VM specifically, the first visible frame can lag behind boot because the guest may still be compiling `shadow-ui-desktop` or app binaries from the mounted source tree. The current operator contract is:
 
