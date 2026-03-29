@@ -19,6 +19,16 @@ LOG_FILE="\$STATE_DIR/log/${PACKAGE}.shadow.log"
 package="${PACKAGE}"
 export CARGO_BUILD_JOBS="\${CARGO_BUILD_JOBS:-1}"
 
+app_id_for_package() {
+  case "\$1" in
+    shadow-counter) echo "counter" ;;
+    shadow-status) echo "status" ;;
+    shadow-cog-demo) echo "cog-demo" ;;
+    shadow-blitz-demo) echo "blitz-demo" ;;
+    *) return 1 ;;
+  esac
+}
+
 matching_processes() {
   ps -eo pid=,comm=,args= | awk -v package="\$package" '
     \$2 == package { print; next }
@@ -90,12 +100,26 @@ if [[ -n "\$existing" ]]; then
   exit 0
 fi
 
-cd /work/shadow
-nohup env \
-  WAYLAND_DISPLAY="\$WAYLAND_DISPLAY" \
-  SHADOW_COMPOSITOR_CONTROL="\$SHADOW_COMPOSITOR_CONTROL" \
-  cargo run --locked --manifest-path ui/Cargo.toml -p "\$package" \
-  >"\$LOG_FILE" 2>&1 </dev/null &
+if app_id="\$(app_id_for_package "\$package")"; then
+  export APP_ID="\$app_id"
+  python3 - <<'PY'
+import os
+import socket
+
+request = f"launch {os.environ['APP_ID']}\n".encode()
+sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+sock.connect(os.environ["SHADOW_COMPOSITOR_CONTROL"])
+sock.sendall(request)
+sock.close()
+PY
+else
+  cd /work/shadow
+  nohup env \
+    WAYLAND_DISPLAY="\$WAYLAND_DISPLAY" \
+    SHADOW_COMPOSITOR_CONTROL="\$SHADOW_COMPOSITOR_CONTROL" \
+    cargo run --locked --manifest-path ui/Cargo.toml -p "\$package" \
+    >"\$LOG_FILE" 2>&1 </dev/null &
+fi
 
 sleep 1
 echo "ui-vm-shadow-app-run: launched \$package on \$WAYLAND_DISPLAY"

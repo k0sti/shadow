@@ -19,6 +19,13 @@ pub fn launch_app(
         )
     })?;
     let mut command = launch_command(app.binary_name, "SHADOW_APP_CLIENT")?;
+    tracing::info!(
+        app_id = app_id.as_str(),
+        binary = app.binary_name,
+        program = %command.get_program().to_string_lossy(),
+        args = ?command.get_args().map(|arg| arg.to_string_lossy().into_owned()).collect::<Vec<_>>(),
+        "shadow-compositor: spawning app"
+    );
     command
         .env("WAYLAND_DISPLAY", socket_name)
         .env(control::COMPOSITOR_CONTROL_ENV, control_socket_path)
