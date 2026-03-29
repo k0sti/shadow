@@ -117,6 +117,14 @@ pixel_counter_artifact() {
   pixel_artifact_path shadow-counter-guest
 }
 
+pixel_guest_client_artifact() {
+  if [[ -n "${PIXEL_GUEST_CLIENT_ARTIFACT:-}" ]]; then
+    printf '%s\n' "$PIXEL_GUEST_CLIENT_ARTIFACT"
+  else
+    pixel_counter_artifact
+  fi
+}
+
 pixel_session_dst() {
   printf '%s\n' "${PIXEL_SESSION_DST:-/data/local/tmp/shadow-session}"
 }
@@ -127,6 +135,14 @@ pixel_compositor_dst() {
 
 pixel_counter_dst() {
   printf '%s\n' "${PIXEL_COUNTER_DST:-/data/local/tmp/shadow-counter-guest}"
+}
+
+pixel_guest_client_dst() {
+  if [[ -n "${PIXEL_GUEST_CLIENT_DST:-}" ]]; then
+    printf '%s\n' "$PIXEL_GUEST_CLIENT_DST"
+  else
+    pixel_counter_dst
+  fi
 }
 
 pixel_runtime_dir() {
@@ -146,12 +162,20 @@ pixel_expected_size() {
 }
 
 pixel_compositor_marker() {
+  if [[ -n "${PIXEL_COMPOSITOR_MARKER:-}" ]]; then
+    printf '%s\n' "$PIXEL_COMPOSITOR_MARKER"
+    return 0
+  fi
   printf '[shadow-guest-compositor] captured-frame checksum=%s size=%s\n' \
     "$(pixel_expected_checksum)" \
     "$(pixel_expected_size)"
 }
 
 pixel_client_marker() {
+  if [[ -n "${PIXEL_CLIENT_MARKER:-}" ]]; then
+    printf '%s\n' "$PIXEL_CLIENT_MARKER"
+    return 0
+  fi
   printf '[shadow-guest-counter] frame-committed checksum=%s size=%s\n' \
     "$(pixel_expected_checksum)" \
     "$(pixel_expected_size)"
@@ -163,7 +187,7 @@ pixel_require_runtime_artifacts() {
   for path in \
     "$(pixel_session_artifact)" \
     "$(pixel_compositor_artifact)" \
-    "$(pixel_counter_artifact)"; do
+    "$(pixel_guest_client_artifact)"; do
     if [[ ! -f "$path" ]]; then
       echo "pixel: missing built artifact: $path" >&2
       missing=1
