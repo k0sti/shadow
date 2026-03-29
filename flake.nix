@@ -40,79 +40,83 @@
           echo ${builtins.toJSON message} >&2
           exit 1
         '';
-      mkInitWrapper = pkgs:
-        let
-          cross = pkgs.pkgsCross.musl64;
-        in cross.rustPlatform.buildRustPackage {
+      mkInitWrapperFor = cross:
+        cross.rustPlatform.buildRustPackage {
           pname = "init-wrapper";
           version = "0.1.0";
           src = ./rust/init-wrapper;
           cargoLock.lockFile = ./rust/init-wrapper/Cargo.lock;
           doCheck = false;
           strictDeps = true;
-          CARGO_BUILD_TARGET = "x86_64-unknown-linux-musl";
-          RUSTFLAGS = "-C target-feature=+crt-static";
+          CARGO_BUILD_TARGET = cross.stdenv.hostPlatform.config;
+          RUSTFLAGS = lib.optionalString cross.stdenv.hostPlatform.isMusl "-C target-feature=+crt-static";
         };
-      mkDrmRect = pkgs:
-        let
-          cross = pkgs.pkgsCross.musl64;
-        in cross.rustPlatform.buildRustPackage {
+      mkDrmRectFor = cross:
+        cross.rustPlatform.buildRustPackage {
           pname = "drm-rect";
           version = "0.1.0";
           src = ./rust/drm-rect;
           cargoLock.lockFile = ./rust/drm-rect/Cargo.lock;
           doCheck = false;
           strictDeps = true;
-          CARGO_BUILD_TARGET = "x86_64-unknown-linux-musl";
-          RUSTFLAGS = "-C target-feature=+crt-static";
+          CARGO_BUILD_TARGET = cross.stdenv.hostPlatform.config;
+          RUSTFLAGS = lib.optionalString cross.stdenv.hostPlatform.isMusl "-C target-feature=+crt-static";
         };
-      mkShadowSession = pkgs:
-        let
-          cross = pkgs.pkgsCross.musl64;
-        in cross.rustPlatform.buildRustPackage {
+      mkShadowSessionFor = cross:
+        cross.rustPlatform.buildRustPackage {
           pname = "shadow-session";
           version = "0.1.0";
           src = ./rust/shadow-session;
           cargoLock.lockFile = ./rust/shadow-session/Cargo.lock;
           doCheck = false;
           strictDeps = true;
-          CARGO_BUILD_TARGET = "x86_64-unknown-linux-musl";
-          RUSTFLAGS = "-C target-feature=+crt-static";
+          CARGO_BUILD_TARGET = cross.stdenv.hostPlatform.config;
+          RUSTFLAGS = lib.optionalString cross.stdenv.hostPlatform.isMusl "-C target-feature=+crt-static";
         };
-      mkShadowGuestCompositor = pkgs:
+      mkShadowGuestCompositorFor = cross:
         let
-          static = pkgs.pkgsStatic;
-        in static.rustPlatform.buildRustPackage {
+          staticXkbcommon = (cross.libxkbcommon.override { withWaylandTools = false; }).overrideAttrs (old: {
+            mesonFlags = (old.mesonFlags or [ ]) ++ [ "-Ddefault_library=static" ];
+          });
+        in cross.rustPlatform.buildRustPackage {
           pname = "shadow-compositor-guest";
           version = "0.1.0";
           src = ./ui;
           cargoLock.lockFile = ./ui/Cargo.lock;
           doCheck = false;
           strictDeps = true;
+          CARGO_BUILD_TARGET = cross.stdenv.hostPlatform.config;
+          RUSTFLAGS = lib.optionalString cross.stdenv.hostPlatform.isMusl "-C target-feature=+crt-static";
           cargoBuildFlags = [ "-p" "shadow-compositor-guest" ];
           cargoInstallFlags = [ "-p" "shadow-compositor-guest" ];
-          buildInputs = [ static.libxkbcommon ];
+          nativeBuildInputs = [ cross.buildPackages.pkg-config ];
+          buildInputs = lib.optionals cross.stdenv.hostPlatform.isLinux [ staticXkbcommon ];
         };
-      mkShadowGuestCounter = pkgs:
-        let
-          static = pkgs.pkgsStatic;
-        in static.rustPlatform.buildRustPackage {
+      mkShadowGuestCounterFor = cross:
+        cross.rustPlatform.buildRustPackage {
           pname = "shadow-counter-guest";
           version = "0.1.0";
           src = ./ui;
           cargoLock.lockFile = ./ui/Cargo.lock;
           doCheck = false;
           strictDeps = true;
+          CARGO_BUILD_TARGET = cross.stdenv.hostPlatform.config;
+          RUSTFLAGS = lib.optionalString cross.stdenv.hostPlatform.isMusl "-C target-feature=+crt-static";
           cargoBuildFlags = [ "-p" "shadow-counter-guest" ];
           cargoInstallFlags = [ "-p" "shadow-counter-guest" ];
-          nativeBuildInputs = [ pkgs.buildPackages.pkg-config ];
+          nativeBuildInputs = [ cross.buildPackages.pkg-config ];
           buildInputs = [
-            static.wayland
-            static.expat
-            static.libffi
+            cross.wayland
+            cross.expat
+            cross.libffi
           ];
           PKG_CONFIG_ALL_STATIC = "1";
         };
+      mkInitWrapper = pkgs: mkInitWrapperFor pkgs.pkgsCross.musl64;
+      mkDrmRect = pkgs: mkDrmRectFor pkgs.pkgsCross.musl64;
+      mkShadowSession = pkgs: mkShadowSessionFor pkgs.pkgsCross.musl64;
+      mkShadowGuestCompositor = pkgs: mkShadowGuestCompositorFor pkgs.pkgsStatic;
+      mkShadowGuestCounter = pkgs: mkShadowGuestCounterFor pkgs.pkgsStatic;
       mkBootimgShell = pkgs:
         let
           toolPkgs = with pkgs; [
@@ -211,6 +215,9 @@
           init-wrapper = mkInitWrapper pkgs;
           drm-rect = mkDrmRect pkgs;
           shadow-session = mkShadowSession pkgs;
+          init-wrapper-device = mkInitWrapperFor pkgs.pkgsCross.aarch64-multiplatform-musl;
+          drm-rect-device = mkDrmRectFor pkgs.pkgsCross.aarch64-multiplatform-musl;
+          shadow-session-device = mkShadowSessionFor pkgs.pkgsCross.aarch64-multiplatform-musl;
           default = mkInitWrapper pkgs;
           ui-vm =
             if pkgs.stdenv.isDarwin && uiVmSource != null then
@@ -222,6 +229,10 @@
         // pkgs.lib.optionalAttrs pkgs.stdenv.isLinux {
           shadow-compositor-guest = mkShadowGuestCompositor pkgs;
           shadow-counter-guest = mkShadowGuestCounter pkgs;
+          shadow-compositor-guest-device =
+            mkShadowGuestCompositorFor pkgs.pkgsCross.aarch64-multiplatform-musl;
+          shadow-counter-guest-device =
+            mkShadowGuestCounterFor pkgs.pkgsCross.aarch64-multiplatform-musl;
         });
     };
 }

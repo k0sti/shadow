@@ -147,6 +147,30 @@ ui-vm-app-run package:
 ui-vm-counter-run:
 	@scripts/ui_vm_app_run.sh shadow-counter
 
+# Inspect the connected Pixel and report whether the post-boot loop can run
+pixel-doctor:
+	@scripts/pixel_doctor.sh
+
+# Build arm64 device artifacts for the Pixel loop
+pixel-build:
+	@scripts/pixel_build.sh
+
+# Push the latest arm64 device artifacts to the connected Pixel
+pixel-push:
+	@scripts/pixel_push.sh
+
+# Run the post-boot guest compositor plus counter demo on the connected Pixel
+pixel-run:
+	@scripts/pixel_run.sh
+
+# Verify the latest Pixel run artifacts or the provided run directory
+pixel-verify run_dir="":
+	@PIXEL_RUN_DIR="{{run_dir}}" scripts/pixel_verify.sh
+
+# Retry the Pixel post-boot loop until it succeeds or hits the configured limit
+pixel-loop:
+	@scripts/pixel_loop.sh
+
 # Run the nested Smithay compositor host on Linux
 compositor-run:
 	@nix develop .#ui -c cargo run --manifest-path ui/Cargo.toml -p shadow-compositor
