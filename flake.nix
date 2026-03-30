@@ -157,6 +157,7 @@
           toolPkgs = with pkgs; [
             bash
             cargo
+            cargo-zigbuild
             clippy
             coreutils
             findutils
@@ -168,6 +169,7 @@
             pkg-config
             rustc
             rustfmt
+            zig
           ];
           runtimeLibs = pkgs.lib.optionals pkgs.stdenv.isLinux (with pkgs; [
             libdrm

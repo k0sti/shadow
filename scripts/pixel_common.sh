@@ -230,6 +230,10 @@ pixel_counter_artifact() {
   pixel_artifact_path shadow-counter-guest
 }
 
+pixel_blitz_demo_artifact() {
+  pixel_artifact_path shadow-blitz-demo
+}
+
 pixel_guest_client_artifact() {
   if [[ -n "${PIXEL_GUEST_CLIENT_ARTIFACT:-}" ]]; then
     printf '%s\n' "$PIXEL_GUEST_CLIENT_ARTIFACT"
@@ -248,6 +252,10 @@ pixel_compositor_dst() {
 
 pixel_counter_dst() {
   printf '%s\n' "${PIXEL_COUNTER_DST:-/data/local/tmp/shadow-counter-guest}"
+}
+
+pixel_blitz_demo_dst() {
+  printf '%s\n' "${PIXEL_BLITZ_DEMO_DST:-/data/local/tmp/shadow-blitz-demo}"
 }
 
 pixel_guest_client_dst() {

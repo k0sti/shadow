@@ -1,0 +1,13 @@
+[package]
+name = "shadow-blitz-demo"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+anyrender_vello_cpu = { version = "0.9", features = ["softbuffer_window_renderer"] }
+blitz-dom = { git = "https://github.com/DioxusLabs/blitz", rev = "589d8a3a260bf64194b989febcf23d77442ffe61", package = "blitz-dom", default-features = false }
+blitz-html = { git = "https://github.com/DioxusLabs/blitz", rev = "589d8a3a260bf64194b989febcf23d77442ffe61", package = "blitz-html", default-features = false }
+blitz-shell = { git = "https://github.com/DioxusLabs/blitz", rev = "589d8a3a260bf64194b989febcf23d77442ffe61", package = "blitz-shell", default-features = false }
+blitz-traits = { git = "https://github.com/DioxusLabs/blitz", rev = "589d8a3a260bf64194b989febcf23d77442ffe61", package = "blitz-traits", default-features = false }
+shadow-ui-core = { path = "../../crates/shadow-ui-core" }
+winit = { version = "=0.31.0-beta.2", default-features = false, features = ["wayland"] }

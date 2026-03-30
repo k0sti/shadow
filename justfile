@@ -155,6 +155,10 @@ pixel-doctor:
 pixel-build:
 	@scripts/pixel_build.sh
 
+# Build the arm64 Blitz demo artifact for the rooted Pixel path
+pixel-build-blitz-demo:
+	@scripts/pixel_build_blitz_demo.sh
+
 # Push the latest arm64 device artifacts to the connected Pixel
 pixel-push:
 	@scripts/pixel_push.sh
@@ -178,6 +182,10 @@ pixel-drm-rect:
 # Stop the Android display stack on the rooted Pixel and run the guest compositor plus client on the real panel
 pixel-guest-ui-drm:
 	@scripts/pixel_guest_ui_drm.sh
+
+# Run the static Blitz demo on the rooted Pixel through the guest compositor DRM path
+pixel-blitz-demo-drm:
+	@scripts/pixel_blitz_demo_drm.sh
 
 # Download/cache the official Pixel 4a OTA, extract boot.img, and fetch the latest Magisk APK
 pixel-root-prep:
