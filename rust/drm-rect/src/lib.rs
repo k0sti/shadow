@@ -14,8 +14,7 @@ pub fn fill_display(color: (u8, u8, u8), duration: Duration) -> Result<()> {
     log_line("starting");
 
     let mut card = open_card("/dev/dri/card0")?;
-    card.acquire_master_lock()
-        .context("failed to acquire DRM master lock")?;
+    let master_locked = acquire_master_lock_if_supported(&card)?;
     let res_handles = card
         .resource_handles()
         .context("failed to fetch DRM resource handles")?;
@@ -41,9 +40,8 @@ pub fn fill_display(color: (u8, u8, u8), duration: Duration) -> Result<()> {
     let encoder = card
         .get_encoder(encoder_handle)
         .with_context(|| format!("failed to query encoder {encoder_handle:?}"))?;
-    let crtc_handle = encoder
-        .crtc()
-        .ok_or_else(|| anyhow!("encoder {encoder_handle:?} reported no CRTC"))?;
+    let crtc_handle =
+        select_crtc_handle(&encoder, &res_handles, connector_handle, encoder_handle)?;
 
     let (width, height) = mode.size();
     let width = u32::from(width);
@@ -74,8 +72,10 @@ pub fn fill_display(color: (u8, u8, u8), duration: Duration) -> Result<()> {
         log_line(&format!("failed to clear crtc: {error}"));
     }
 
-    if let Err(error) = card.release_master_lock() {
-        log_line(&format!("failed to release DRM master lock: {error}"));
+    if master_locked {
+        if let Err(error) = card.release_master_lock() {
+            log_line(&format!("failed to release DRM master lock: {error}"));
+        }
     }
 
     card.destroy_framebuffer(fb_handle)
@@ -107,6 +107,27 @@ fn open_card(path: &str) -> Result<Card> {
     Ok(Card(file))
 }
 
+fn acquire_master_lock_if_supported(card: &Card) -> Result<bool> {
+    match card.acquire_master_lock() {
+        Ok(()) => {
+            log_line("acquired DRM master lock");
+            Ok(true)
+        }
+        Err(error)
+            if matches!(
+                error.raw_os_error(),
+                Some(libc::EINVAL | libc::ENOTTY | libc::EOPNOTSUPP)
+            ) =>
+        {
+            log_line(&format!(
+                "continuing without DRM master lock; ioctl unsupported: {error}"
+            ));
+            Ok(false)
+        }
+        Err(error) => Err(error).context("failed to acquire DRM master lock"),
+    }
+}
+
 struct Card(std::fs::File);
 
 impl AsFd for Card {
@@ -134,6 +155,27 @@ fn find_connected_connector(
     Err(anyhow!(
         "no connected connector with available modes was found"
     ))
+}
+
+fn select_crtc_handle(
+    encoder: &drm::control::encoder::Info,
+    res_handles: &drm::control::ResourceHandles,
+    connector_handle: connector::Handle,
+    encoder_handle: drm::control::encoder::Handle,
+) -> Result<drm::control::crtc::Handle> {
+    encoder
+        .crtc()
+        .or_else(|| {
+            res_handles
+                .filter_crtcs(encoder.possible_crtcs())
+                .into_iter()
+                .next()
+        })
+        .ok_or_else(|| {
+            anyhow!(
+                "connector {connector_handle:?} encoder {encoder_handle:?} reported no usable CRTC"
+            )
+        })
 }
 
 fn fill_buffer_with_color(card: &mut Card, dumb: &mut DumbBuffer, rgb: (u8, u8, u8)) -> Result<()> {

@@ -110,6 +110,65 @@ pixel_fastboot() {
   fastboot -s "$serial" "$@"
 }
 
+pixel_su_candidates() {
+  printf '%s\n' "${PIXEL_SU_BIN:-/debug_ramdisk/su}"
+  printf '%s\n' "su"
+}
+
+pixel_root_id() {
+  local serial su_bin output status
+  serial="$1"
+
+  while IFS= read -r su_bin; do
+    [[ -n "$su_bin" ]] || continue
+    set +e
+    output="$(pixel_adb "$serial" shell "$su_bin 0 sh -c id" 2>/dev/null | tr -d '\r')"
+    status="$?"
+    set -e
+    if [[ "$status" -eq 0 && -n "$output" ]]; then
+      printf '%s\n' "$output"
+      return 0
+    fi
+  done < <(pixel_su_candidates)
+
+  return 1
+}
+
+pixel_root_shell() {
+  local serial command su_bin
+  serial="$1"
+  shift
+  command="$1"
+
+  while IFS= read -r su_bin; do
+    [[ -n "$su_bin" ]] || continue
+    if pixel_adb "$serial" shell "$su_bin 0 sh -c $(printf '%q' "$command")"; then
+      return 0
+    fi
+  done < <(pixel_su_candidates)
+
+  return 1
+}
+
+pixel_takeover_stop_services_script() {
+  cat <<'EOF'
+stop surfaceflinger || true
+stop bootanim || true
+stop vendor.hwcomposer-2-4 || true
+stop vendor.qti.hardware.display.allocator || true
+setenforce 0 >/dev/null 2>&1 || true
+EOF
+}
+
+pixel_takeover_start_services_script() {
+  cat <<'EOF'
+start vendor.qti.hardware.display.allocator || true
+start vendor.hwcomposer-2-4 || true
+start surfaceflinger || true
+start bootanim || true
+EOF
+}
+
 pixel_prop() {
   local serial key
   serial="$1"
@@ -119,6 +178,15 @@ pixel_prop() {
 
 pixel_prepare_dirs() {
   mkdir -p "$(pixel_artifacts_dir)" "$(pixel_runs_dir)" "$(pixel_root_dir)"
+}
+
+pixel_prepare_named_run_dir() {
+  local base_dir run_dir
+  base_dir="$1"
+  mkdir -p "$base_dir"
+  run_dir="${base_dir}/$(pixel_timestamp)"
+  mkdir -p "$run_dir"
+  printf '%s\n' "$run_dir"
 }
 
 pixel_prepare_run_dir() {
@@ -200,6 +268,14 @@ pixel_download_dir_device() {
 
 pixel_frame_path() {
   printf '%s\n' "${PIXEL_FRAME_PATH:-/data/local/tmp/shadow-frame.ppm}"
+}
+
+pixel_drm_runs_dir() {
+  printf '%s/drm\n' "$(pixel_dir)"
+}
+
+pixel_drm_guest_runs_dir() {
+  printf '%s/drm-guest\n' "$(pixel_dir)"
 }
 
 pixel_root_ota_url() {

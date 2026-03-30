@@ -102,6 +102,7 @@ pub fn write_frame_ppm(frame: &CapturedFrame, path: impl AsRef<Path>) -> Result<
 
 pub struct KmsDisplay {
     card: Card,
+    master_locked: bool,
     connector_handle: connector::Handle,
     crtc_handle: crtc::Handle,
     mode: drm::control::Mode,
@@ -114,8 +115,7 @@ pub struct KmsDisplay {
 impl KmsDisplay {
     pub fn open_default() -> Result<Self> {
         let card = open_card(DRM_DEVICE_PATH)?;
-        card.acquire_master_lock()
-            .context("failed to acquire DRM master lock")?;
+        let master_locked = acquire_master_lock_if_supported(&card)?;
         let res_handles = card
             .resource_handles()
             .context("failed to fetch DRM resource handles")?;
@@ -134,9 +134,8 @@ impl KmsDisplay {
         let encoder = card
             .get_encoder(encoder_handle)
             .with_context(|| format!("failed to query encoder {encoder_handle:?}"))?;
-        let crtc_handle = encoder
-            .crtc()
-            .ok_or_else(|| anyhow!("encoder {encoder_handle:?} reported no CRTC"))?;
+        let crtc_handle =
+            select_crtc_handle(&encoder, &res_handles, connector_handle, encoder_handle)?;
 
         let (width, height) = mode.size();
         let width = u32::from(width);
@@ -150,6 +149,7 @@ impl KmsDisplay {
 
         let mut display = Self {
             card,
+            master_locked,
             connector_handle,
             crtc_handle,
             mode,
@@ -231,7 +231,9 @@ impl KmsDisplay {
 
 impl Drop for KmsDisplay {
     fn drop(&mut self) {
-        let _ = self.card.release_master_lock();
+        if self.master_locked {
+            let _ = self.card.release_master_lock();
+        }
         if let Some(fb_handle) = self.fb_handle.take() {
             let _ = self.card.destroy_framebuffer(fb_handle);
         }
@@ -245,6 +247,27 @@ fn clear_framebuffer(framebuffer: &mut [u8]) {
     for pixel in framebuffer.chunks_exact_mut(BYTES_PER_PIXEL) {
         pixel.copy_from_slice(&BACKGROUND_PIXEL);
     }
+}
+
+fn select_crtc_handle(
+    encoder: &drm::control::encoder::Info,
+    res_handles: &drm::control::ResourceHandles,
+    connector_handle: connector::Handle,
+    encoder_handle: drm::control::encoder::Handle,
+) -> Result<crtc::Handle> {
+    encoder
+        .crtc()
+        .or_else(|| {
+            res_handles
+                .filter_crtcs(encoder.possible_crtcs())
+                .into_iter()
+                .next()
+        })
+        .ok_or_else(|| {
+            anyhow!(
+                "connector {connector_handle:?} encoder {encoder_handle:?} reported no usable CRTC"
+            )
+        })
 }
 
 fn blit_frame_centered(
@@ -343,6 +366,21 @@ impl AsFd for Card {
 
 impl BasicDevice for Card {}
 impl ControlDevice for Card {}
+
+fn acquire_master_lock_if_supported(card: &Card) -> Result<bool> {
+    match card.acquire_master_lock() {
+        Ok(()) => Ok(true),
+        Err(error)
+            if matches!(
+                error.raw_os_error(),
+                Some(libc::EINVAL | libc::ENOTTY | libc::EOPNOTSUPP)
+            ) =>
+        {
+            Ok(false)
+        }
+        Err(error) => Err(error).context("failed to acquire DRM master lock"),
+    }
+}
 
 fn find_connected_connector(
     card: &Card,

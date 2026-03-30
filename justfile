@@ -171,6 +171,14 @@ pixel-verify run_dir="":
 pixel-loop:
 	@scripts/pixel_loop.sh
 
+# Stop the Android display stack on the rooted Pixel and run the direct DRM takeover proof
+pixel-drm-rect:
+	@scripts/pixel_drm_rect.sh
+
+# Stop the Android display stack on the rooted Pixel and run the guest compositor plus client on the real panel
+pixel-guest-ui-drm:
+	@scripts/pixel_guest_ui_drm.sh
+
 # Download/cache the official Pixel 4a OTA, extract boot.img, and fetch the latest Magisk APK
 pixel-root-prep:
 	@scripts/pixel_root_prep.sh

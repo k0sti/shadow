@@ -44,6 +44,8 @@ The current operator ladder reflects that split:
 5. `just ui-vm-run` is the fast local macOS loop for compositor and shell UX work; it is intentionally outside CI.
 6. `scripts/shadowctl` plus `just ui-vm-doctor` / `ui-vm-state` / `ui-vm-wait-ready` / `ui-vm-screenshot` provide the current CLI observability layer for the local VM.
 7. `just pixel-doctor` / `pixel-build` / `pixel-push` / `pixel-run` / `pixel-loop` are the current real-device operator ladder for post-boot iteration on a plugged-in Pixel.
+8. `just pixel-drm-rect` is the first rooted visible-screen proof on the Pixel: stop the Android display services, take DRM master, modeset the panel, then hand control back.
+9. `just pixel-guest-ui-drm` reuses that rooted display-takeover seam for the real compositor path and proves the guest compositor plus counter client can render to the phone panel, not just to an offscreen artifact.
 
 This is intentionally not yet a full custom userland boot. The repo is using the smallest reliable transport at each layer: first-stage wrapper for `/init` proof, then post-boot guest session launch for display and compositor iteration.
 
@@ -67,6 +69,12 @@ For the newly unlocked-and-rooted Pixel track, the intended operator ladder is n
 4. `just pixel-root-flash` flashes the patched image to the explicit active-slot `boot_a` or `boot_b` partition, reboots Android, installs the Magisk app, and verifies `su`.
 
 This removes the old requirement to manually patch `boot.img` inside the Magisk app, while keeping `just pixel-root-stage` as a fallback if the non-interactive patch path ever breaks.
+
+One device-specific detail emerged on the real Pixel 4a:
+
+1. Stopping only `surfaceflinger` is not enough to free the panel for DRM/KMS takeover.
+2. The working rooted handoff currently stops `surfaceflinger`, `bootanim`, `vendor.hwcomposer-2-4`, and `vendor.qti.hardware.display.allocator`.
+3. On this Qualcomm display stack, a connector can also report an encoder without a current CRTC even though the panel is usable; the KMS path now falls back to the first CRTC allowed by `possible_crtcs`.
 
 For the local VM specifically, the first visible frame can lag behind boot because the guest may still be compiling `shadow-ui-desktop` or app binaries from the mounted source tree. The current operator contract is:
 

@@ -9,7 +9,7 @@ ensure_bootimg_shell "$@"
 serial="$(pixel_resolve_serial)"
 
 set +e
-su_id="$(pixel_adb "$serial" shell 'su 0 sh -c id' 2>/dev/null | tr -d '\r')"
+su_id="$(pixel_root_id "$serial")"
 su_status="$?"
 set -e
 
