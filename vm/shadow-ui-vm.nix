@@ -349,9 +349,9 @@ PY
           };
           qemu.extraArgs = [
             "-display"
-            "cocoa,zoom-to-fit=on"
+            "cocoa"
             "-device"
-            "virtio-gpu,xres=640,yres=1220"
+            "virtio-gpu,xres=660,yres=1240"
             "-device"
             "qemu-xhci"
             "-device"

@@ -656,7 +656,7 @@ fn render_ui(canvas: &mut [u8], width: u32, height: u32, model: &CounterModel) {
         598,
         2,
         if model.tap_pressed() {
-            "RELEASE TO INCREMENT"
+            "COUNT REGISTERED"
         } else {
             "TAP THE BUTTON TO COUNT"
         },
@@ -668,11 +668,7 @@ fn render_ui(canvas: &mut [u8], width: u32, height: u32, model: &CounterModel) {
         height,
         tap_button.y as i32 + 27,
         4,
-        if model.tap_pressed() {
-            "RELEASE"
-        } else {
-            "TAP"
-        },
+        if model.tap_pressed() { "HELD" } else { "TAP" },
         primary,
     );
     draw_centered_text(
