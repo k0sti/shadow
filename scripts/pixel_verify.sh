@@ -26,6 +26,8 @@ compositor_ok=false
 client_ok=false
 frame_ok=false
 require_client_marker="${PIXEL_VERIFY_REQUIRE_CLIENT_MARKER-1}"
+required_markers_raw="${PIXEL_VERIFY_REQUIRED_MARKERS-}"
+required_markers_ok=true
 
 if grep -Fq "$compositor_marker" "$session_output"; then
   compositor_ok=true
@@ -38,9 +40,18 @@ fi
 if [[ -s "$frame_artifact" ]]; then
   frame_ok=true
 fi
+if [[ -n "$required_markers_raw" ]]; then
+  while IFS= read -r marker; do
+    [[ -n "$marker" ]] || continue
+    if ! grep -Fq "$marker" "$session_output"; then
+      required_markers_ok=false
+      break
+    fi
+  done <<< "$required_markers_raw"
+fi
 
 success=false
-if [[ "$compositor_ok" == true && "$client_ok" == true && "$frame_ok" == true ]]; then
+if [[ "$compositor_ok" == true && "$client_ok" == true && "$required_markers_ok" == true && "$frame_ok" == true ]]; then
   success=true
 fi
 
@@ -48,6 +59,7 @@ pixel_write_status_json "$run_dir/status.json" \
   run_dir="$run_dir" \
   compositor_marker_seen="$compositor_ok" \
   client_marker_seen="$client_ok" \
+  required_markers_seen="$required_markers_ok" \
   frame_artifact_present="$frame_ok" \
   success="$success"
 

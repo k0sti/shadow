@@ -37,6 +37,8 @@ stop_checkpoint_timeout_secs="${PIXEL_GUEST_STOP_CHECKPOINT_TIMEOUT_SECS-15}"
 process_checkpoint_timeout_secs="${PIXEL_GUEST_PROCESS_CHECKPOINT_TIMEOUT_SECS-15}"
 compositor_marker_timeout_secs="${PIXEL_GUEST_COMPOSITOR_MARKER_TIMEOUT_SECS-20}"
 client_marker_timeout_secs="${PIXEL_GUEST_CLIENT_MARKER_TIMEOUT_SECS-20}"
+required_markers_raw="${PIXEL_GUEST_REQUIRED_MARKERS-}"
+required_marker_timeout_secs="${PIXEL_GUEST_REQUIRED_MARKER_TIMEOUT_SECS-$client_marker_timeout_secs}"
 frame_checkpoint_timeout_secs="${PIXEL_GUEST_FRAME_CHECKPOINT_TIMEOUT_SECS-20}"
 restore_checkpoint_timeout_secs="${PIXEL_GUEST_RESTORE_CHECKPOINT_TIMEOUT_SECS-20}"
 logcat_pid=""
@@ -52,6 +54,7 @@ compositor_started=false
 client_started=false
 compositor_marker_seen=false
 client_marker_seen=false
+required_markers_seen=false
 frame_on_device=false
 android_restored=false
 
@@ -82,6 +85,19 @@ session_output_has_marker() {
 
 session_still_running() {
   [[ -n "${session_pid:-}" ]] && kill -0 "$session_pid" >/dev/null 2>&1
+}
+
+required_markers_all_seen() {
+  local marker
+
+  [[ -n "$required_markers_raw" ]] || return 0
+  while IFS= read -r marker; do
+    [[ -n "$marker" ]] || continue
+    if ! session_output_has_marker "$marker"; then
+      return 1
+    fi
+  done <<< "$required_markers_raw"
+  return 0
 }
 
 client_start_observed() {
@@ -220,6 +236,21 @@ if [[ -z "$failure_message" && -n "$expect_client_marker" ]]; then
   fi
 fi
 
+if [[ -z "$failure_message" && -n "$required_markers_raw" ]]; then
+  while IFS= read -r required_marker; do
+    [[ -n "$required_marker" ]] || continue
+    if wait_for_checkpoint "required marker seen" "$required_marker_timeout_secs" session_output_has_marker "$required_marker"; then
+      :
+    else
+      failure_message="timed out waiting for required marker: $required_marker"
+      break
+    fi
+  done <<< "$required_markers_raw"
+  if [[ -z "$failure_message" ]]; then
+    required_markers_seen=true
+  fi
+fi
+
 if [[ -z "$failure_message" ]]; then
   if wait_for_checkpoint "frame artifact written on device" "$frame_checkpoint_timeout_secs" pixel_root_file_nonempty "$serial" "$frame_path"; then
     frame_on_device=true
@@ -256,7 +287,10 @@ logcat_pid=""
 pixel_capture_processes "$serial" "$run_dir/processes-after.txt"
 
 set +e
-PIXEL_VERIFY_REQUIRE_CLIENT_MARKER="$verify_require_client_marker" PIXEL_RUN_DIR="$run_dir" "$SCRIPT_DIR/pixel_verify.sh"
+PIXEL_VERIFY_REQUIRE_CLIENT_MARKER="$verify_require_client_marker" \
+PIXEL_VERIFY_REQUIRED_MARKERS="$required_markers_raw" \
+PIXEL_RUN_DIR="$run_dir" \
+  "$SCRIPT_DIR/pixel_verify.sh"
 verify_status="$?"
 set -e
 if [[ "$compositor_marker_seen" != true ]] && session_output_has_marker "$(pixel_compositor_marker)"; then
@@ -265,6 +299,9 @@ if [[ "$compositor_marker_seen" != true ]] && session_output_has_marker "$(pixel
 fi
 if [[ "$client_marker_seen" != true ]] && session_output_has_marker "$(pixel_client_marker)"; then
   client_marker_seen=true
+fi
+if [[ "$required_markers_seen" != true ]] && required_markers_all_seen; then
+  required_markers_seen=true
 fi
 if [[ "$frame_on_device" != true && -s "$frame_artifact" ]]; then
   frame_on_device=true
@@ -286,9 +323,7 @@ fi
 if [[ "$startup_ok" == true ]]; then
   if [[ -n "$restore_android" && "$android_restored" != true ]]; then
     session_ok=false
-  elif [[ "$session_status" -eq 0 ]]; then
-    session_ok=true
-  elif [[ -z "$restore_android" && "$verify_status" -eq 0 && "$presented" == true ]]; then
+  elif [[ "$verify_status" -eq 0 && "$presented" == true ]]; then
     session_ok=true
   fi
 fi
@@ -304,8 +339,10 @@ pixel_write_status_json "$run_dir/status.json" \
   compositor_process_started="$compositor_started" \
   client_process_started="$client_started" \
   client_marker_expected="$([[ -n "$expect_client_marker" ]] && echo true || echo false)" \
+  required_markers_expected="$([[ -n "$required_markers_raw" ]] && echo true || echo false)" \
   compositor_marker_seen="$compositor_marker_seen" \
   client_marker_seen="$client_marker_seen" \
+  required_markers_seen="$required_markers_seen" \
   frame_on_device="$frame_on_device" \
   presented_frame="$presented" \
   session_ok="$session_ok" \
