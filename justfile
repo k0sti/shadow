@@ -83,6 +83,22 @@ cf-kill:
 ui-check:
 	@scripts/ui_check.sh
 
+# Enter the Nix shell for the runtime / V8 exploration lane
+runtime-shell:
+	@nix develop .#runtime
+
+# Run the minimal Rusty V8 smoke binary on the current host
+runtime-rusty-v8-smoke:
+	@nix run --accept-flake-config .#rusty-v8-smoke
+
+# Build the minimal Rusty V8 smoke binary for x86_64 Linux
+runtime-rusty-v8-smoke-x86_64-linux-gnu:
+	@nix build --accept-flake-config .#rusty-v8-smoke-x86_64-linux-gnu
+
+# Build the minimal Rusty V8 smoke binary for aarch64 Linux
+runtime-rusty-v8-smoke-aarch64-linux-gnu:
+	@nix build --accept-flake-config .#rusty-v8-smoke-aarch64-linux-gnu
+
 # Run the Shadow desktop UI host
 ui-run:
 	@nix develop .#ui -c cargo run --manifest-path ui/Cargo.toml -p shadow-ui-desktop
