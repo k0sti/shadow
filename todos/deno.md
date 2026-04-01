@@ -11,17 +11,18 @@ Living note. Revise it as we learn. Do not treat this as a fixed contract.
 
 ## Current Ladder
 
-1. Package `rusty_v8` under Nix.
-   First prove the build on normal Linux targets.
-2. Build a tiny `rusty_v8` embedder.
+1. Done: package `rusty_v8` under Nix and prove host + GNU cross builds.
+2. Done: tiny `rusty_v8` embedder.
    Eval JS, print result, no Deno yet.
-3. Cross-build that embedder for `aarch64` Linux.
-4. Pick the phone execution envelope.
+3. Done: tiny `deno_core` embedder.
+   Eval JS, file-backed ES modules, top-level `await`, host + GNU cross builds.
+4. Next: pick the phone execution envelope.
    Most likely `gnu` userspace-on-device or a later `musl` retarget.
-5. Build a tiny `deno_core` embedder.
-6. Run JS on the real phone.
-7. Add `deno_runtime` only after the lower seams are stable.
-8. Feed Blitz documents from the runtime seam.
+5. Next: run the `deno_core` seam on the real phone.
+6. Next: add the first host/runtime protocol seam.
+   Likely a tiny extension op before `deno_runtime`.
+7. Later: add `deno_runtime` only after the lower seams are stable.
+8. Later: feed Blitz documents from the runtime seam.
 
 ## Open Questions
 

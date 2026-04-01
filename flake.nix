@@ -178,6 +178,10 @@
               cross.buildPackages.libiconv
             ];
           RUSTY_V8_ARCHIVE = mkRustyV8ArchiveFor cross;
+          postInstall = ''
+            mkdir -p "$out/lib/deno-core-smoke"
+            cp -r "$src/modules" "$out/lib/deno-core-smoke/"
+          '';
           meta.mainProgram = "deno-core-smoke";
         };
       mkInitWrapper = pkgs: mkInitWrapperFor pkgs.pkgsCross.musl64;

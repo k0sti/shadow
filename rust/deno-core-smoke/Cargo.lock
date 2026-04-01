@@ -230,6 +230,7 @@ name = "deno-core-smoke"
 version = "0.1.0"
 dependencies = [
  "deno_core",
+ "tokio",
  "v8",
 ]
 
