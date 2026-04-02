@@ -53,7 +53,7 @@ impl DemoMode {
     fn document(self) -> Box<dyn blitz_dom::Document> {
         match self {
             Self::Static => Box::new(StaticDocument::new()),
-            Self::Runtime => Box::new(RuntimeDocument::new(RuntimeDocument::sample_payload())),
+            Self::Runtime => Box::new(RuntimeDocument::from_env_or_sample()),
         }
     }
 

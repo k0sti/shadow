@@ -8,8 +8,11 @@ use std::{
 
 use blitz_dom::{DocGuard, DocGuardMut, Document};
 use blitz_html::HtmlDocument;
+use blitz_traits::events::UiEvent;
+use serde::{Deserialize, Serialize};
 
 use crate::frame::template_document;
+use crate::runtime_session::{RuntimeDispatchEvent, RuntimeSession};
 
 const STYLE_SELECTOR: &str = "#shadow-blitz-style";
 const ROOT_SELECTOR: &str = "#shadow-blitz-root";
@@ -87,7 +90,7 @@ body {
 }
 "#;
 
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 pub struct RuntimeDocumentPayload {
     pub html: String,
     pub css: Option<String>,
@@ -97,6 +100,8 @@ pub struct RuntimeDocument {
     inner: HtmlDocument,
     payload: RuntimeDocumentPayload,
     frame_nodes: FrameNodes,
+    runtime_session: Option<RuntimeSession>,
+    pending_runtime_event: Option<RuntimeDispatchEvent>,
     should_exit: bool,
     timer_started: bool,
     timer_tx: Sender<RuntimeTimerEvent>,
@@ -105,13 +110,40 @@ pub struct RuntimeDocument {
 
 impl RuntimeDocument {
     pub fn new(payload: RuntimeDocumentPayload) -> Self {
+        Self::with_runtime(payload, None)
+    }
+
+    pub fn from_env_or_sample() -> Self {
+        match RuntimeSession::from_env() {
+            Ok(Some(mut runtime_session)) => {
+                let payload = runtime_session
+                    .render_document()
+                    .unwrap_or_else(|error| panic!("render initial runtime document: {error}"));
+                eprintln!("[shadow-runtime-demo] runtime-session-ready");
+                Self::with_runtime(payload, Some(runtime_session))
+            }
+            Ok(None) => {
+                eprintln!("[shadow-runtime-demo] runtime-sample-mode");
+                Self::new(Self::sample_payload())
+            }
+            Err(error) => panic!("configure runtime session: {error}"),
+        }
+    }
+
+    fn with_runtime(
+        payload: RuntimeDocumentPayload,
+        runtime_session: Option<RuntimeSession>,
+    ) -> Self {
         let (timer_tx, timer_rx) = channel();
         let inner = template_document();
         let frame_nodes = FrameNodes::resolve(&inner);
+        let pending_runtime_event = auto_click_event_from_env(runtime_session.is_some());
         let mut document = Self {
             inner,
             payload,
             frame_nodes,
+            pending_runtime_event,
+            runtime_session,
             should_exit: false,
             timer_started: false,
             timer_tx,
@@ -146,6 +178,68 @@ impl RuntimeDocument {
             self.payload.css.as_deref().unwrap_or(""),
         );
         mutator.set_inner_html(self.frame_nodes.root_id, &self.payload.html);
+    }
+
+    fn handle_runtime_ui_event(&mut self, event: UiEvent) {
+        let Some(runtime_event) = self.runtime_event_for_ui_event(&event) else {
+            return;
+        };
+        if let Err(error) = self.dispatch_runtime_event(runtime_event, "ui") {
+            eprintln!("[shadow-runtime-demo] runtime-event-error: {error}");
+        }
+    }
+
+    fn runtime_event_for_ui_event(&self, event: &UiEvent) -> Option<RuntimeDispatchEvent> {
+        let UiEvent::PointerUp(pointer) = event else {
+            return None;
+        };
+        if !pointer.is_primary {
+            return None;
+        }
+
+        let target_id = self.shadow_target_id_at(pointer.client_x(), pointer.client_y())?;
+        Some(RuntimeDispatchEvent {
+            target_id,
+            event_type: String::from("click"),
+            value: None,
+        })
+    }
+
+    fn shadow_target_id_at(&self, x: f32, y: f32) -> Option<String> {
+        let hit = self.inner.hit(x, y)?;
+        let mut node_id = Some(hit.node_id);
+
+        while let Some(id) = node_id {
+            let node = self.inner.get_node(id)?;
+            if let Some(target_id) = node.attrs().and_then(|attrs| {
+                attrs.iter().find_map(|attr| {
+                    (attr.name.local.as_ref() == "data-shadow-id").then_some(attr.value.to_string())
+                })
+            }) {
+                return Some(target_id);
+            }
+            node_id = node.parent;
+        }
+
+        None
+    }
+
+    fn dispatch_runtime_event(
+        &mut self,
+        event: RuntimeDispatchEvent,
+        source: &str,
+    ) -> Result<bool, String> {
+        let Some(runtime_session) = self.runtime_session.as_mut() else {
+            return Ok(false);
+        };
+
+        let payload = runtime_session.dispatch(event.clone())?;
+        self.replace_document(payload);
+        eprintln!(
+            "[shadow-runtime-demo] runtime-event-dispatched source={} type={} target={}",
+            source, event.event_type, event.target_id
+        );
+        Ok(true)
     }
 
     fn ensure_exit_timer_started(&mut self, task_context: Option<Context<'_>>) {
@@ -216,10 +310,24 @@ impl Document for RuntimeDocument {
         self.inner.inner_mut()
     }
 
+    fn handle_ui_event(&mut self, event: UiEvent) {
+        self.handle_runtime_ui_event(event);
+    }
+
     fn poll(&mut self, task_context: Option<std::task::Context<'_>>) -> bool {
         self.ensure_exit_timer_started(task_context);
 
         let mut changed = false;
+        if let Some(event) = self.pending_runtime_event.take() {
+            match self.dispatch_runtime_event(event, "auto") {
+                Ok(did_update) => {
+                    changed |= did_update;
+                }
+                Err(error) => {
+                    eprintln!("[shadow-runtime-demo] runtime-event-error: {error}");
+                }
+            }
+        }
         while let Ok(event) = self.timer_rx.try_recv() {
             changed |= self.handle_timer_event(event);
         }
@@ -273,6 +381,22 @@ fn optional_duration_from_env(key: &str) -> Option<Duration> {
     value.parse::<u64>().ok().map(Duration::from_millis)
 }
 
+fn auto_click_event_from_env(runtime_session_enabled: bool) -> Option<RuntimeDispatchEvent> {
+    if !runtime_session_enabled {
+        return None;
+    }
+
+    let target_id = env::var("SHADOW_BLITZ_RUNTIME_AUTO_CLICK_TARGET").ok()?;
+    if target_id.is_empty() {
+        return None;
+    }
+
+    Some(RuntimeDispatchEvent {
+        target_id,
+        event_type: String::from("click"),
+        value: None,
+    })
+}
 #[cfg(test)]
 mod tests {
     use super::{RuntimeDocument, RuntimeDocumentPayload};

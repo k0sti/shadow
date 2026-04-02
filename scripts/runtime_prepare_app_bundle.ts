@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import {
   compileSolidModule,
   type CompileSolidModuleOptions,
+  DEFAULT_MODULE_NAME,
 } from "./runtime_compile_solid.ts";
 
 const DEFAULT_CACHE_DIR = "build/runtime/app-document-smoke";
@@ -30,13 +31,17 @@ async function main() {
   const rendererSourcePath = path.resolve(cwd, RENDERER_SOURCE_PATH);
   const rendererPath = path.join(compiled.cacheDir, "shadow_runtime_solid.js");
   const runnerPath = path.join(compiled.cacheDir, "runner.js");
+  const bundlePath = path.join(compiled.cacheDir, "bundle.js");
 
   await Deno.copyFile(rendererSourcePath, rendererPath);
+  await rewriteRuntimeAliasImports(compiled.outputPath);
   await Deno.writeTextFile(runnerPath, buildRunnerSource());
+  await bundleRunner(runnerPath, bundlePath);
 
   console.log(
     JSON.stringify(
       {
+        bundlePath: path.relative(cwd, bundlePath),
         cacheDir: path.relative(cwd, compiled.cacheDir),
         cacheHit: compiled.cacheHit,
         inputPath: path.relative(cwd, compiled.inputPath),
@@ -52,17 +57,64 @@ async function main() {
 
 function buildRunnerSource(): string {
   return `import * as appModule from "./app.js";
-import { renderToDocument } from "./shadow_runtime_solid.js";
+import { createRuntimeApp } from "./shadow_runtime_solid.js";
 
 const renderApp = appModule.renderApp ?? appModule.default;
 if (typeof renderApp !== "function") {
   throw new TypeError("compiled app module must export renderApp or default");
 }
 
-const documentPayload = renderToDocument(renderApp());
+const runtimeApp = createRuntimeApp(renderApp);
+const documentPayload = runtimeApp.renderDocument();
+globalThis.SHADOW_RUNTIME_APP = runtimeApp;
+globalThis.SHADOW_RUNTIME_HOST = {
+  dispatch(event) {
+    return JSON.stringify(runtimeApp.dispatch(event));
+  },
+  render() {
+    return JSON.stringify(runtimeApp.renderDocument());
+  },
+};
 globalThis.RUNTIME_APP_DOCUMENT = documentPayload;
 globalThis.RUNTIME_SMOKE_RESULT = JSON.stringify(documentPayload);
 `;
+}
+
+async function rewriteRuntimeAliasImports(outputPath: string) {
+  const output = await Deno.readTextFile(outputPath);
+  const rewritten = output
+    .replaceAll(`from "${DEFAULT_MODULE_NAME}"`, `from "${RENDERER_MODULE_NAME}"`)
+    .replaceAll(`from '${DEFAULT_MODULE_NAME}'`, `from '${RENDERER_MODULE_NAME}'`);
+
+  if (rewritten !== output) {
+    await Deno.writeTextFile(outputPath, rewritten);
+  }
+}
+
+async function bundleRunner(runnerPath: string, bundlePath: string) {
+  const command = new Deno.Command(Deno.execPath(), {
+    args: [
+      "bundle",
+      "--quiet",
+      "--platform",
+      "deno",
+      "--packages",
+      "bundle",
+      "--output",
+      bundlePath,
+      runnerPath,
+    ],
+    stderr: "piped",
+    stdout: "piped",
+  });
+  const result = await command.output();
+  if (result.success) {
+    return;
+  }
+
+  const stderr = new TextDecoder().decode(result.stderr).trim();
+  const stdout = new TextDecoder().decode(result.stdout).trim();
+  throw new Error(stderr || stdout || `bundle failed for ${runnerPath}`);
 }
 
 function parseArgs(args: string[]): CliOptions {

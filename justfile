@@ -103,6 +103,14 @@ runtime-app-compile-smoke:
 runtime-app-document-smoke:
 	@nix develop .#runtime -c scripts/runtime_app_document_smoke.sh
 
+# Run the first host-dispatched click through the bundled app runtime seam
+runtime-app-click-smoke:
+	@nix develop .#runtime -c scripts/runtime_app_click_smoke.sh
+
+# Run the first host-dispatched change event through the bundled app runtime seam
+runtime-app-input-smoke:
+	@nix develop .#runtime -c scripts/runtime_app_input_smoke.sh
+
 # Run the fixed-frame Blitz document smoke for app payload swapping
 runtime-app-blitz-document-smoke:
 	@scripts/runtime_app_blitz_document_smoke.sh
@@ -314,6 +322,18 @@ pixel-root-check:
 # Run the minimal Deno Core smoke binary on the rooted Pixel through the GNU runtime envelope
 pixel-runtime-deno-core-smoke:
 	@scripts/pixel_runtime_deno_core_smoke.sh
+
+# Stage the runtime app bundle plus GNU-wrapped deno_core helper for Pixel use
+pixel-prepare-runtime-app-artifacts:
+	@scripts/pixel_prepare_runtime_app_artifacts.sh
+
+# Run the runtime-mode Blitz demo on the rooted Pixel through the guest compositor DRM path
+pixel-runtime-app-drm:
+	@scripts/pixel_runtime_app_drm.sh
+
+# Run the runtime-mode Blitz demo on the rooted Pixel and auto-dispatch one runtime click
+pixel-runtime-app-click-drm:
+	@scripts/pixel_runtime_app_click_drm.sh
 
 # Run the nested Smithay compositor host on Linux
 compositor-run:
