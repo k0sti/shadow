@@ -115,6 +115,8 @@ pub struct RuntimeDispatchEvent {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub value: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub checked: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub pointer: Option<RuntimePointerEvent>,
 }
 

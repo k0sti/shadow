@@ -259,6 +259,8 @@ struct RuntimeDispatchEvent {
     #[serde(skip_serializing_if = "Option::is_none")]
     value: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    checked: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pointer: Option<RuntimePointerEvent>,
 }
 

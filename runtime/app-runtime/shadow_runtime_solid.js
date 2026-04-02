@@ -140,6 +140,10 @@ function setProperty(node, name, value) {
   assertElementNode(node, "setProperty");
 
   const attributeName = name === "className" ? "class" : name;
+  if (attributeName === "checked") {
+    node.checked = Boolean(value);
+    return;
+  }
   if (attributeName === "classList" && value && typeof value === "object") {
     const className = Object.entries(value)
       .filter(([, enabled]) => Boolean(enabled))
@@ -257,6 +261,9 @@ function normalizeRuntimeEvent(event) {
   if (typeof event.value === "string") {
     normalizedEvent.value = event.value;
   }
+  if (typeof event.checked === "boolean") {
+    normalizedEvent.checked = event.checked;
+  }
   const pointer = normalizeRuntimePointer(event.pointer);
   if (pointer) {
     normalizedEvent.pointer = pointer;
@@ -324,6 +331,9 @@ function applyRuntimeEventState(node, event) {
   if ((event.type === "change" || event.type === "input") && "value" in event) {
     node.value = event.value;
   }
+  if ((event.type === "change" || event.type === "input") && "checked" in event) {
+    node.checked = event.checked;
+  }
 }
 
 function createRuntimeEvent(targetNode, event) {
@@ -340,6 +350,7 @@ function createRuntimeEvent(targetNode, event) {
     targetId: event.targetId,
     type: event.type,
     value: "value" in event ? event.value : targetNode.value,
+    checked: "checked" in event ? event.checked : targetNode.checked,
     pointer: event.pointer ?? null,
     clientX: event.pointer?.clientX ?? 0,
     clientY: event.pointer?.clientY ?? 0,
@@ -452,6 +463,32 @@ function attachElementAccessors(node) {
           return;
         }
         node.attributes.name = String(nextValue);
+      },
+    },
+    checked: {
+      enumerable: false,
+      get() {
+        return Boolean(node.attributes.checked);
+      },
+      set(nextValue) {
+        if (!nextValue) {
+          delete node.attributes.checked;
+          return;
+        }
+        node.attributes.checked = true;
+      },
+    },
+    type: {
+      enumerable: false,
+      get() {
+        return node.attributes.type ?? "";
+      },
+      set(nextValue) {
+        if (nextValue == null) {
+          delete node.attributes.type;
+          return;
+        }
+        node.attributes.type = String(nextValue);
       },
     },
   });
