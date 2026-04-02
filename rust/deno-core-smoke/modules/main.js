@@ -1,3 +1,4 @@
-import { buildMessage } from "./message.js";
+import { finalizeMessage } from "./message.js";
 
-globalThis.RUNTIME_SMOKE_RESULT = await buildMessage();
+const hostMessage = await Deno.core.ops.op_runtime_message("HELLO");
+globalThis.RUNTIME_SMOKE_RESULT = await finalizeMessage(hostMessage);

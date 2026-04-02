@@ -16,11 +16,11 @@ Living note. Revise it as we learn. Do not treat this as a fixed contract.
    Eval JS, print result, no Deno yet.
 3. Done: tiny `deno_core` embedder.
    Eval JS, file-backed ES modules, top-level `await`, host + GNU cross builds.
-4. Next: pick the phone execution envelope.
+4. Done: first host/runtime protocol seam.
+   Tiny async extension op from JS into Rust and back.
+5. Next: pick the phone execution envelope.
    Most likely `gnu` userspace-on-device or a later `musl` retarget.
-5. Next: run the `deno_core` seam on the real phone.
-6. Next: add the first host/runtime protocol seam.
-   Likely a tiny extension op before `deno_runtime`.
+6. Next: run the `deno_core` seam on the real phone.
 7. Later: add `deno_runtime` only after the lower seams are stable.
 8. Later: feed Blitz documents from the runtime seam.
 

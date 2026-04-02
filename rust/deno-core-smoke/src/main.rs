@@ -1,12 +1,25 @@
 use std::env;
 use std::path::PathBuf;
 use std::rc::Rc;
+use std::time::Duration;
 
 use deno_core::FsModuleLoader;
 use deno_core::JsRuntime;
 use deno_core::PollEventLoopOptions;
 use deno_core::RuntimeOptions;
 use deno_core::anyhow::{Context, Result, anyhow};
+use deno_core::extension;
+use deno_core::op2;
+use deno_error::JsErrorBox;
+
+#[op2]
+#[string]
+async fn op_runtime_message(#[string] prefix: String) -> Result<String, JsErrorBox> {
+    tokio::time::sleep(Duration::from_millis(1)).await;
+    Ok(format!("{prefix} FROM HOST OP"))
+}
+
+extension!(runtime_smoke_extension, ops = [op_runtime_message]);
 
 fn main() -> Result<()> {
     let runtime = tokio::runtime::Builder::new_current_thread()
@@ -20,6 +33,7 @@ async fn run() -> Result<()> {
     let main_module = resolve_main_module()?;
     let mut runtime = JsRuntime::new(RuntimeOptions {
         module_loader: Some(Rc::new(FsModuleLoader)),
+        extensions: vec![runtime_smoke_extension::init()],
         ..Default::default()
     });
 
@@ -46,7 +60,7 @@ async fn run() -> Result<()> {
         .to_rust_string_lossy(scope);
 
     println!(
-        "deno_core module ok: target={} module={} result={value}",
+        "deno_core host-op ok: target={} module={} result={value}",
         std::env::consts::ARCH,
         main_module
     );
