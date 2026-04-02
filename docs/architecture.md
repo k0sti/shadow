@@ -82,7 +82,7 @@ This also sets the current boundary for the Blitz + Deno demo on device:
 10. The helper backend is now swappable on the host: the same `render` / `dispatch` stdio session contract works with either `deno_core` or `deno_runtime`, so runtime capability experiments no longer need a separate Blitz bridge.
 11. The rooted Pixel loop now proves the same runtime contract on the real panel: a static Blitz client launches under the guest compositor, spawns the GNU-wrapped helper via a tiny shell launcher, and points it at the bundled app JS pushed into the same device directory.
 12. Full-root HTML snapshots still win the MVP tradeoff after the device proof. Host and rooted-Pixel click rerenders both complete fast enough that a Rust-side patch bridge would be premature; the next pressure point is likely text input, focus, or more animated apps rather than simple card flows.
-13. The next concrete device seam is touch input, not rendering. The runtime Blitz app already turns `PointerUp` into a runtime click, so the missing work is reading the rooted Pixel touchscreen and forwarding one contact through the guest compositor as pointer motion plus a primary-button tap.
+13. The next concrete device seam is touch input, not rendering. The guest compositor now has an in-progress rooted-Pixel touch backend: it creates a real Smithay seat plus pointer, detects the direct-touch panel, and applies the same centered/cropped panel-to-client mapping that KMS presentation uses. The remaining gap is live on-device touch ingest inside that compositor process.
 
 For the newly unlocked-and-rooted Pixel track, the intended operator ladder is now:
 

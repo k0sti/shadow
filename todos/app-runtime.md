@@ -91,10 +91,10 @@ Living note. Revise it as we learn. Do not treat this as a fixed contract.
 
 - [x] Rooted Pixel raw touch seam.
   `just pixel-touch-input-smoke` auto-detects the direct-touch evdev node, records its `getevent -pl` descriptor under `build/pixel/touch/`, and captures one raw touch sequence. Default mode injects one rooted `sendevent` tap so the seam is self-verifying; set `PIXEL_TOUCH_SMOKE_MODE=manual` and tap the screen yourself to prove the same capture path with a real finger.
-- [ ] Single-contact pointer backend in `shadow-compositor-guest`.
-  Add a real Smithay seat plus pointer to the rooted guest compositor, read one active touch contact from the panel, and forward it as pointer motion plus primary button press/release.
-- [ ] Panel-to-client coordinate mapping.
-  Mirror the same centered/cropped rect that `kms.rs` uses for presentation so panel-space touches land in the right client-space coordinates.
+- [~] Single-contact pointer backend in `shadow-compositor-guest`.
+  The rooted guest compositor now creates a real Smithay seat plus pointer, detects the direct-touch panel, and has a touch-reader path that is meant to forward one active contact as pointer motion plus primary button press/release. Host checks pass, but the rooted Pixel still is not surfacing live touch events inside the compositor process yet, so this rung is in progress.
+- [~] Panel-to-client coordinate mapping.
+  The compositor now mirrors the same centered/cropped rect that `kms.rs` uses for presentation so panel-space touches land in client-space coordinates. The math is unit-tested and wired into the pointer path, but it still needs live rooted-Pixel confirmation once the compositor-side touch ingest is actually firing.
 - [ ] Manual rooted-Pixel tap on the runtime demo.
   Launch the runtime Blitz card on the real panel, tap the `Count` button with a real finger, and see the HTML snapshot rerender without auto-dispatch.
 - [ ] Re-evaluate touch + text-entry UX.

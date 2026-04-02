@@ -1,4 +1,5 @@
 mod kms;
+mod touch;
 
 use std::time::Duration;
 use std::{
@@ -9,19 +10,23 @@ use std::{
 };
 
 use smithay::{
+    backend::input::ButtonState,
     backend::renderer::utils::{on_commit_buffer_handler, with_renderer_surface_state},
     delegate_compositor, delegate_seat, delegate_shm, delegate_xdg_shell,
-    desktop::{Space, Window},
-    input::{Seat, SeatHandler, SeatState},
+    desktop::{Space, Window, WindowSurfaceType},
+    input::{
+        pointer::{ButtonEvent, MotionEvent},
+        Seat, SeatHandler, SeatState,
+    },
     reexports::{
-        calloop::{generic::Generic, EventLoop, Interest, LoopSignal, Mode, PostAction},
+        calloop::{channel, generic::Generic, EventLoop, Interest, LoopSignal, Mode, PostAction},
         wayland_server::{
             backend::{ClientData, ClientId, DisconnectReason},
             protocol::{wl_buffer, wl_seat, wl_surface::WlSurface},
             BindError, Client, Display, DisplayHandle,
         },
     },
-    utils::Serial,
+    utils::{Logical, Point, Serial, SERIAL_COUNTER},
     wayland::{
         compositor::{
             get_parent, is_sync_subsurface, with_states, CompositorClientState, CompositorHandler,
@@ -32,6 +37,8 @@ use smithay::{
         socket::ListeningSocketSource,
     },
 };
+
+const BTN_LEFT: u32 = 0x110;
 
 #[derive(Clone, Debug)]
 enum WaylandTransport {
@@ -58,12 +65,14 @@ struct ShadowGuestCompositor {
     xdg_shell_state: XdgShellState,
     shm_state: ShmState,
     seat_state: SeatState<Self>,
+    seat: Seat<Self>,
     launched_clients: Vec<Child>,
     exit_on_first_window: bool,
     exit_on_first_frame: bool,
     exit_on_client_disconnect: bool,
     selftest_drm: bool,
     kms_display: Option<kms::KmsDisplay>,
+    last_frame_size: Option<(u32, u32)>,
 }
 
 impl ShadowGuestCompositor {
@@ -77,8 +86,11 @@ impl ShadowGuestCompositor {
             event_loop,
             exit_on_client_disconnect.then_some(loop_signal.clone()),
         );
+        let mut seat_state = SeatState::new();
+        let mut seat = seat_state.new_wl_seat(&display_handle, "shadow-guest");
+        seat.add_pointer();
 
-        Self {
+        let mut state = Self {
             transport,
             display_handle: display_handle.clone(),
             space: Space::default(),
@@ -86,7 +98,8 @@ impl ShadowGuestCompositor {
             compositor_state: CompositorState::new::<Self>(&display_handle),
             xdg_shell_state: XdgShellState::new::<Self>(&display_handle),
             shm_state: ShmState::new::<Self>(&display_handle, vec![]),
-            seat_state: SeatState::new(),
+            seat_state,
+            seat,
             launched_clients: Vec::new(),
             exit_on_first_window: std::env::var_os("SHADOW_GUEST_COMPOSITOR_EXIT_ON_FIRST_WINDOW")
                 .is_some(),
@@ -95,7 +108,10 @@ impl ShadowGuestCompositor {
             exit_on_client_disconnect,
             selftest_drm: std::env::var_os("SHADOW_GUEST_COMPOSITOR_SELFTEST_DRM").is_some(),
             kms_display: None,
-        }
+            last_frame_size: None,
+        };
+        state.insert_touch_source(event_loop);
+        state
     }
 
     fn ensure_kms_display(&mut self) -> Option<&mut kms::KmsDisplay> {
@@ -272,7 +288,138 @@ impl ShadowGuestCompositor {
         }
     }
 
+    fn insert_touch_source(&mut self, event_loop: &mut EventLoop<Self>) {
+        let touch_device = match touch::detect_touch_device() {
+            Ok(device) => device,
+            Err(error) => {
+                tracing::warn!("[shadow-guest-compositor] touch-unavailable: {error}");
+                return;
+            }
+        };
+
+        tracing::info!(
+            "[shadow-guest-compositor] touch-ready device={} name={} range={}..={}x{}..={}",
+            touch_device.path.display(),
+            touch_device.name,
+            touch_device.x_min,
+            touch_device.x_max,
+            touch_device.y_min,
+            touch_device.y_max
+        );
+
+        let (sender, receiver) = channel::channel();
+        event_loop
+            .handle()
+            .insert_source(receiver, |event, _, state| match event {
+                channel::Event::Msg(event) => state.handle_touch_input(event),
+                channel::Event::Closed => {
+                    tracing::warn!("[shadow-guest-compositor] touch-source closed")
+                }
+            })
+            .expect("insert touch source");
+        touch::spawn_touch_reader(touch_device, sender);
+    }
+
+    fn handle_touch_input(&mut self, event: touch::TouchInputEvent) {
+        let pointer = self.seat.get_pointer().expect("guest seat pointer");
+        let serial = SERIAL_COUNTER.next_serial();
+
+        match event.phase {
+            touch::TouchPhase::Down | touch::TouchPhase::Move => {
+                tracing::info!(
+                    "[shadow-guest-compositor] touch-input phase={:?} normalized={:.3},{:.3}",
+                    event.phase,
+                    event.normalized_x,
+                    event.normalized_y
+                );
+                let Some(position) = self.touch_position(event.normalized_x, event.normalized_y)
+                else {
+                    tracing::info!(
+                        "[shadow-guest-compositor] touch-outside-content normalized={:.3},{:.3}",
+                        event.normalized_x,
+                        event.normalized_y
+                    );
+                    return;
+                };
+                let under = self.surface_under(position);
+                tracing::info!(
+                    "[shadow-guest-compositor] touch-pointer phase={:?} x={:.1} y={:.1} surface={}",
+                    event.phase,
+                    position.x,
+                    position.y,
+                    under.is_some()
+                );
+                pointer.motion(
+                    self,
+                    under,
+                    &MotionEvent {
+                        location: position,
+                        serial,
+                        time: event.time_msec,
+                    },
+                );
+                if matches!(event.phase, touch::TouchPhase::Down) {
+                    pointer.button(
+                        self,
+                        &ButtonEvent {
+                            button: BTN_LEFT,
+                            state: ButtonState::Pressed,
+                            serial,
+                            time: event.time_msec,
+                        },
+                    );
+                }
+                pointer.frame(self);
+            }
+            touch::TouchPhase::Up => {
+                tracing::info!("[shadow-guest-compositor] touch-input phase=Up");
+                pointer.button(
+                    self,
+                    &ButtonEvent {
+                        button: BTN_LEFT,
+                        state: ButtonState::Released,
+                        serial,
+                        time: event.time_msec,
+                    },
+                );
+                pointer.frame(self);
+            }
+        }
+    }
+
+    fn touch_position(
+        &mut self,
+        normalized_x: f64,
+        normalized_y: f64,
+    ) -> Option<Point<f64, Logical>> {
+        let (frame_width, frame_height) = self.last_frame_size?;
+        let (panel_width, panel_height) = self.ensure_kms_display()?.dimensions();
+        let (x, y) = touch::map_normalized_touch_to_frame(
+            normalized_x,
+            normalized_y,
+            panel_width,
+            panel_height,
+            frame_width,
+            frame_height,
+        )?;
+        Some((x, y).into())
+    }
+
+    fn surface_under(
+        &self,
+        position: Point<f64, Logical>,
+    ) -> Option<(WlSurface, Point<f64, Logical>)> {
+        self.space
+            .element_under(position)
+            .and_then(|(window, location)| {
+                window
+                    .surface_under(position - location.to_f64(), WindowSurfaceType::ALL)
+                    .map(|(surface, point)| (surface, (point + location).to_f64()))
+            })
+    }
+
     fn publish_frame(&mut self, frame: &kms::CapturedFrame, frame_marker: &str) {
+        self.last_frame_size = Some((frame.width, frame.height));
         let checksum = kms::frame_checksum(frame);
         tracing::info!(
             "[shadow-guest-compositor] {frame_marker} checksum={checksum:016x} size={}x{}",

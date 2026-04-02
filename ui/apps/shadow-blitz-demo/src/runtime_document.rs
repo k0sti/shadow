@@ -197,7 +197,15 @@ impl RuntimeDocument {
             return None;
         }
 
-        let target_id = self.shadow_target_id_at(pointer.client_x(), pointer.client_y())?;
+        let Some(target_id) = self.shadow_target_id_at(pointer.client_x(), pointer.client_y())
+        else {
+            eprintln!(
+                "[shadow-runtime-demo] runtime-hit-miss x={} y={}",
+                pointer.client_x(),
+                pointer.client_y()
+            );
+            return None;
+        };
         Some(RuntimeDispatchEvent {
             target_id,
             event_type: String::from("click"),
