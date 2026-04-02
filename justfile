@@ -103,6 +103,10 @@ runtime-app-compile-smoke:
 runtime-app-document-smoke:
 	@nix develop .#runtime -c scripts/runtime_app_document_smoke.sh
 
+# Run the fixed-frame Blitz document smoke for app payload swapping
+runtime-app-blitz-document-smoke:
+	@scripts/runtime_app_blitz_document_smoke.sh
+
 # Build the minimal Rusty V8 smoke binary for x86_64 Linux
 runtime-rusty-v8-smoke-x86_64-linux-gnu:
 	@nix build --accept-flake-config .#rusty-v8-smoke-x86_64-linux-gnu

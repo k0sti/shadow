@@ -41,8 +41,8 @@ Living note. Revise it as we learn. Do not treat this as a fixed contract.
   `just runtime-app-compile-smoke` runs Deno + Babel + Solid universal mode and caches compiled JS under `build/runtime/app-compile-smoke/`.
 - [x] `deno_core` load compiled module.
   `just runtime-app-document-smoke` bundles the compiled app with a tiny renderer shim, runs it through `nix run .#deno-core-smoke`, and returns the first `{ html, css }` payload on host.
-- [ ] Rust `BlitzRuntimeDocument`.
-  Fixed frame. Swap `<style>` and app root via inner HTML.
+- [x] Rust `BlitzRuntimeDocument`.
+  `just runtime-app-blitz-document-smoke` proves a fixed-frame Blitz document can swap the `<style>` and app root inner HTML from a runtime payload.
 - [ ] Host visible proof.
   Launch one sample app. First frame on desktop host.
 - [ ] Click round-trip.
