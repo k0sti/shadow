@@ -58,6 +58,7 @@ The current operator ladder reflects that split:
 19. `just runtime-app-input-smoke` is the first text-input host proof: dispatch a host `change` event with a string value into the same bundled runtime seam and verify both the form control state and rendered preview update.
 20. `just pixel-runtime-app-drm` stages that same bundled app plus a GNU-wrapped `deno_core` helper for the rooted phone, pushes both through the existing device artifact lane, and proves the runtime-mode Blitz demo reaches the real panel.
 21. `just pixel-runtime-app-click-drm` proves the rooted panel path survives one runtime click dispatch and rerender before Android display services are restored.
+22. `just pixel-touch-input-smoke` is the first rooted input seam for the app-runtime lane: auto-detect the direct-touch evdev node, capture one raw touch sequence, and prove the phone panel can feed usable contact data back into our stack.
 
 This is intentionally not yet a full custom userland boot. The repo is using the smallest reliable transport at each layer: first-stage wrapper for `/init` proof, then post-boot guest session launch for display and compositor iteration.
 
@@ -81,6 +82,7 @@ This also sets the current boundary for the Blitz + Deno demo on device:
 10. The helper backend is now swappable on the host: the same `render` / `dispatch` stdio session contract works with either `deno_core` or `deno_runtime`, so runtime capability experiments no longer need a separate Blitz bridge.
 11. The rooted Pixel loop now proves the same runtime contract on the real panel: a static Blitz client launches under the guest compositor, spawns the GNU-wrapped helper via a tiny shell launcher, and points it at the bundled app JS pushed into the same device directory.
 12. Full-root HTML snapshots still win the MVP tradeoff after the device proof. Host and rooted-Pixel click rerenders both complete fast enough that a Rust-side patch bridge would be premature; the next pressure point is likely text input, focus, or more animated apps rather than simple card flows.
+13. The next concrete device seam is touch input, not rendering. The runtime Blitz app already turns `PointerUp` into a runtime click, so the missing work is reading the rooted Pixel touchscreen and forwarding one contact through the guest compositor as pointer motion plus a primary-button tap.
 
 For the newly unlocked-and-rooted Pixel track, the intended operator ladder is now:
 

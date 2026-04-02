@@ -371,6 +371,10 @@ pixel-runtime-app-drm:
 pixel-runtime-app-click-drm:
 	@scripts/pixel_runtime_app_click_drm.sh
 
+# Detect the rooted Pixel touchscreen and capture one raw touch sequence
+pixel-touch-input-smoke:
+	@scripts/pixel_touch_input_smoke.sh
+
 # Run the nested Smithay compositor host on Linux
 compositor-run:
 	@nix develop .#ui -c cargo run --manifest-path ui/Cargo.toml -p shadow-compositor

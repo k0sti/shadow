@@ -550,6 +550,47 @@ pixel_runtime_runs_dir() {
   printf '%s/runtime\n' "$(pixel_dir)"
 }
 
+pixel_touch_runs_dir() {
+  printf '%s/touch\n' "$(pixel_dir)"
+}
+
+pixel_touchscreen_event_device() {
+  local serial listing device
+  serial="$1"
+  listing="$(pixel_adb "$serial" shell getevent -pl 2>/dev/null | tr -d '\r')"
+  device="$(
+    printf '%s\n' "$listing" | awk '
+      /^add device/ {
+        if (device != "" && direct && has_x && has_y) {
+          print device
+          found=1
+          exit
+        }
+        device=$4
+        direct=0
+        has_x=0
+        has_y=0
+        next
+      }
+      /ABS_MT_POSITION_X/ { has_x=1 }
+      /ABS_MT_POSITION_Y/ { has_y=1 }
+      /INPUT_PROP_DIRECT/ { direct=1 }
+      END {
+        if (!found && device != "" && direct && has_x && has_y) {
+          print device
+        }
+      }
+    '
+  )"
+
+  if [[ -z "$device" ]]; then
+    echo "pixel: failed to detect a direct-touch input device from 'getevent -pl'" >&2
+    return 1
+  fi
+
+  printf '%s\n' "$device"
+}
+
 pixel_root_ota_url() {
   printf '%s\n' "${PIXEL_ROOT_OTA_URL:-https://ota.googlezip.net/packages/ota-api/package/c4e85817eb7653336a8fe2de681618a9e004b1fb.zip}"
 }
