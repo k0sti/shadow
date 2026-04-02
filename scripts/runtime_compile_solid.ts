@@ -4,9 +4,9 @@ import presetSolid from "npm:babel-preset-solid@1.9.10";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const GENERATE_MODE = "universal";
-const DEFAULT_CACHE_DIR = "build/runtime/app-compile-smoke";
-const DEFAULT_MODULE_NAME = "@shadow/app-runtime-solid";
+export const GENERATE_MODE = "universal";
+export const DEFAULT_CACHE_DIR = "build/runtime/app-compile-smoke";
+export const DEFAULT_MODULE_NAME = "@shadow/app-runtime-solid";
 const EXPECTED_TOKENS = [
   "createElement",
   "createTextNode",
@@ -14,7 +14,7 @@ const EXPECTED_TOKENS = [
   "setProp",
 ];
 
-type Options = {
+type CliOptions = {
   inputPath: string;
   cacheDir: string;
   moduleName: string;
@@ -42,18 +42,39 @@ const toolchain = {
   presetTypescript: "7.28.5",
 };
 
-async function main() {
-  const options = parseArgs(Deno.args);
-  const cwd = Deno.cwd();
+export type CompileSolidModuleOptions = {
+  cwd?: string;
+  inputPath: string;
+  cacheDir?: string;
+  moduleName?: string;
+  expectCacheHit?: boolean;
+};
+
+export type CompileSolidModuleResult = {
+  cacheDir: string;
+  cacheHit: boolean;
+  cacheKey: string;
+  inputPath: string;
+  metadataPath: string;
+  moduleName: string;
+  outputPath: string;
+};
+
+export async function compileSolidModule(
+  options: CompileSolidModuleOptions,
+): Promise<CompileSolidModuleResult> {
+  const cwd = options.cwd ?? Deno.cwd();
+  const moduleName = options.moduleName ?? DEFAULT_MODULE_NAME;
+  const expectCacheHit = options.expectCacheHit ?? false;
   const inputPath = path.resolve(cwd, options.inputPath);
-  const cacheRoot = path.resolve(cwd, options.cacheDir);
+  const cacheRoot = path.resolve(cwd, options.cacheDir ?? DEFAULT_CACHE_DIR);
   const source = await Deno.readTextFile(inputPath);
   const sourceHash = await sha256Hex(source);
   const configHash = await sha256Hex(
     JSON.stringify({
       generate: GENERATE_MODE,
       inputPath: path.relative(cwd, inputPath),
-      moduleName: options.moduleName,
+      moduleName,
       toolchain,
     }),
   );
@@ -78,7 +99,7 @@ async function main() {
           presetSolid,
           {
             generate: GENERATE_MODE,
-            moduleName: options.moduleName,
+            moduleName,
           },
         ],
         [
@@ -96,7 +117,7 @@ async function main() {
       throw new Error(`solid compile produced no output for ${inputPath}`);
     }
 
-    validateOutput(code, options.moduleName);
+    validateOutput(code, moduleName);
     await Deno.mkdir(cacheDir, { recursive: true });
     await Deno.writeTextFile(outputPath, `${code}\n`);
 
@@ -105,7 +126,7 @@ async function main() {
       configHash,
       generate: GENERATE_MODE,
       inputPath: path.relative(cwd, inputPath),
-      moduleName: options.moduleName,
+      moduleName,
       outputPath: path.relative(cwd, outputPath),
       sourceHash,
       toolchain,
@@ -116,24 +137,40 @@ async function main() {
     );
   }
 
-  if (options.expectCacheHit && !cacheHit) {
+  if (expectCacheHit && !cacheHit) {
     throw new Error(
       `expected a cache hit for ${path.relative(cwd, inputPath)}`,
     );
   }
 
   const outputCode = await Deno.readTextFile(outputPath);
-  validateOutput(outputCode, options.moduleName);
+  validateOutput(outputCode, moduleName);
 
+  return {
+    cacheDir,
+    cacheHit,
+    cacheKey,
+    inputPath,
+    metadataPath,
+    moduleName,
+    outputPath,
+  };
+}
+
+async function main() {
+  const options = parseArgs(Deno.args);
+  const result = await compileSolidModule(options);
+  const cwd = options.cwd ?? Deno.cwd();
   console.log(
     JSON.stringify(
       {
-        cacheDir: path.relative(cwd, cacheDir),
-        cacheHit,
-        cacheKey,
-        inputPath: path.relative(cwd, inputPath),
-        moduleName: options.moduleName,
-        outputPath: path.relative(cwd, outputPath),
+        cacheDir: path.relative(cwd, result.cacheDir),
+        cacheHit: result.cacheHit,
+        cacheKey: result.cacheKey,
+        inputPath: path.relative(cwd, result.inputPath),
+        metadataPath: path.relative(cwd, result.metadataPath),
+        moduleName: result.moduleName,
+        outputPath: path.relative(cwd, result.outputPath),
       },
       null,
       2,
@@ -141,8 +178,8 @@ async function main() {
   );
 }
 
-function parseArgs(args: string[]): Options {
-  const options: Options = {
+function parseArgs(args: string[]): CliOptions & { cwd?: string } {
+  const options: CliOptions & { cwd?: string } = {
     cacheDir: DEFAULT_CACHE_DIR,
     expectCacheHit: false,
     inputPath: "",

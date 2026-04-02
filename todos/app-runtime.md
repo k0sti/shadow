@@ -39,9 +39,9 @@ Living note. Revise it as we learn. Do not treat this as a fixed contract.
 
 1. Done: host-only TSX compile smoke.
    `just runtime-app-compile-smoke` runs Deno + Babel + Solid universal mode and caches compiled JS under `build/runtime/app-compile-smoke/`.
-2. Next: `deno_core` load compiled module.
-   No display yet. Return first document payload.
-3. Rust `BlitzRuntimeDocument`.
+2. Done: `deno_core` load compiled module.
+   `just runtime-app-document-smoke` bundles the compiled app with a tiny renderer shim, runs it through `nix run .#deno-core-smoke`, and returns the first `{ html, css }` payload on host.
+3. Next: Rust `BlitzRuntimeDocument`.
    Fixed frame. Swap `<style>` and app root via inner HTML.
 4. Host visible proof.
    Launch one sample app. First frame on desktop host.
@@ -57,6 +57,7 @@ Living note. Revise it as we learn. Do not treat this as a fixed contract.
 ## Open Questions
 
 - Is a source-plus-config hash enough once imports start affecting compiled output?
+- Do we keep file-relative bundle wiring for the first app host, or add a custom module-loader alias before Blitz integration?
 - Universal renderer vs SSR string renderer for v0?
 - CSS scoping model?
 - Input / focus / caret strategy?
