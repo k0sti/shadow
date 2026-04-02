@@ -37,22 +37,22 @@ Living note. Revise it as we learn. Do not treat this as a fixed contract.
 
 ## MVP Ladder
 
-1. Done: host-only TSX compile smoke.
-   `just runtime-app-compile-smoke` runs Deno + Babel + Solid universal mode and caches compiled JS under `build/runtime/app-compile-smoke/`.
-2. Done: `deno_core` load compiled module.
-   `just runtime-app-document-smoke` bundles the compiled app with a tiny renderer shim, runs it through `nix run .#deno-core-smoke`, and returns the first `{ html, css }` payload on host.
-3. Next: Rust `BlitzRuntimeDocument`.
-   Fixed frame. Swap `<style>` and app root via inner HTML.
-4. Host visible proof.
-   Launch one sample app. First frame on desktop host.
-5. Click round-trip.
-   Native click -> JS handler -> rerender.
-6. Basic form / input path.
-   Prefer uncontrolled, or `change` / `submit` first.
-7. Rooted Pixel proof.
-   Same transport on the real panel.
-8. Re-evaluate full snapshots.
-   Keep them if fast enough. Add patch lane only if needed.
+- [x] Host-only TSX compile smoke.
+  `just runtime-app-compile-smoke` runs Deno + Babel + Solid universal mode and caches compiled JS under `build/runtime/app-compile-smoke/`.
+- [x] `deno_core` load compiled module.
+  `just runtime-app-document-smoke` bundles the compiled app with a tiny renderer shim, runs it through `nix run .#deno-core-smoke`, and returns the first `{ html, css }` payload on host.
+- [ ] Rust `BlitzRuntimeDocument`.
+  Fixed frame. Swap `<style>` and app root via inner HTML.
+- [ ] Host visible proof.
+  Launch one sample app. First frame on desktop host.
+- [ ] Click round-trip.
+  Native click -> JS handler -> rerender.
+- [ ] Basic form / input path.
+  Prefer uncontrolled, or `change` / `submit` first.
+- [ ] Rooted Pixel proof.
+  Same transport on the real panel.
+- [ ] Re-evaluate full snapshots.
+  Keep them if fast enough. Add patch lane only if needed.
 
 ## Open Questions
 
