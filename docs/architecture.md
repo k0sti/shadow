@@ -52,7 +52,7 @@ The current operator ladder reflects that split:
 13. `just runtime-app-compile-smoke` is the first host-side app-runtime rung: it proves a Solid-style TSX module can compile under Deno into a custom-renderer contract without assuming a browser runtime.
 14. `just runtime-app-document-smoke` is the next host-side rung: it proves the compiled app bundle can execute through the embedded `deno_core` runtime and return the first `{ html, css }` document payload before Blitz is involved.
 15. `just runtime-app-blitz-document-smoke` is the first Rust-side Blitz bridge rung: it proves a fixed-frame `HtmlDocument` can swap runtime CSS and app HTML into persistent frame slots before a visible host window is involved.
-16. `just runtime-app-host-run` and `just runtime-app-host-smoke` are the first visible host proof: launch a runtime-mode Blitz window backed by the new frame seam, with the smoke variant auto-exiting after the first host frame.
+16. `just runtime-app-host-run` and `just runtime-app-host-smoke` are the first visible host proof: prepare the bundled app plus the tiny `deno_core` helper, launch a runtime-mode Blitz window backed by the new frame seam, and keep the same JS session alive behind the visible host app.
 17. `just runtime-app-click-smoke` is the first reactive host proof: keep the bundled app alive inside one `deno_core` session, dispatch a host click into the JS handler table, and verify the rerendered HTML snapshot changes.
 18. `just runtime-app-input-smoke` is the first text-input host proof: dispatch a host `change` event with a string value into the same bundled runtime seam and verify both the form control state and rendered preview update.
 
@@ -72,10 +72,10 @@ This also sets the current boundary for the Blitz + Deno demo on device:
 4. The first proven app-model seam on the host is now the compile step: Deno runs Babel with `babel-preset-solid` in universal mode and emits imports for a custom renderer module instead of a browser DOM target.
 5. The next proven host seam is the first document payload: compile the app, rewrite runtime alias imports, bundle the app plus the renderer shim into one local JS file, run that through the embedded `deno_core` runtime, and read `{ html, css }` back out without a browser.
 6. The first proven Rust-side Blitz seam on the host is now a fixed frame with stable style/root slots: mutate those slots with `set_inner_html`, keep the outer document persistent, and leave visible host integration for the next rung.
-7. The first visible host proof now composes that seam into a real window: runtime-shaped payload, persistent Blitz frame, and a sample app card rendered on screen without the browser.
-8. The first reactive host proof now keeps JS state inside one embedded runtime session: host-dispatched click events target `data-shadow-id` nodes, JS handlers mutate Solid state, and the app emits a fresh HTML snapshot.
+7. The first visible host proof now composes that seam into a real window with the real runtime attached: a helper `deno_core` process keeps the bundled app alive, Rust owns the persistent Blitz frame, and the host swaps in each returned HTML snapshot.
+8. The first reactive host proof now uses that same helper session end-to-end: host-dispatched click events target `data-shadow-id` nodes, JS handlers mutate Solid state, and the app emits a fresh HTML snapshot back into the Blitz document.
 9. The first form/input proof keeps that same contract intentionally small: host `change` events may carry a string `value`, the runtime updates the target element state before invoking the JS handler, and the app emits the next HTML snapshot.
-10. Reaching full Blitz-on-device still needs more runtime work beyond the current Pixel compositor loop: either stabilize that Linux userspace envelope for the real runtime, retarget to a more self-contained payload, or replace the subprocess model with an embedded JS runtime seam.
+10. Reaching full Blitz-on-device still needs more runtime work beyond the current Pixel compositor loop: either stabilize that Linux userspace envelope for the real runtime, retarget to a more self-contained payload, or replace the subprocess helper with an embedded JS runtime seam.
 
 For the newly unlocked-and-rooted Pixel track, the intended operator ladder is now:
 

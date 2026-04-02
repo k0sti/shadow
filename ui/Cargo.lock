@@ -3002,6 +3002,8 @@ dependencies = [
  "blitz-html",
  "blitz-shell",
  "blitz-traits",
+ "serde",
+ "serde_json",
  "shadow-ui-core",
  "winit 0.31.0-beta.2",
 ]

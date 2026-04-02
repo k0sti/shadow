@@ -67,6 +67,14 @@ if (typeof renderApp !== "function") {
 const runtimeApp = createRuntimeApp(renderApp);
 const documentPayload = runtimeApp.renderDocument();
 globalThis.SHADOW_RUNTIME_APP = runtimeApp;
+globalThis.SHADOW_RUNTIME_HOST = {
+  dispatch(event) {
+    return JSON.stringify(runtimeApp.dispatch(event));
+  },
+  render() {
+    return JSON.stringify(runtimeApp.renderDocument());
+  },
+};
 globalThis.RUNTIME_APP_DOCUMENT = documentPayload;
 globalThis.RUNTIME_SMOKE_RESULT = JSON.stringify(documentPayload);
 `;

@@ -44,7 +44,7 @@ Living note. Revise it as we learn. Do not treat this as a fixed contract.
 - [x] Rust `BlitzRuntimeDocument`.
   `just runtime-app-blitz-document-smoke` proves a fixed-frame Blitz document can swap the `<style>` and app root inner HTML from a runtime payload.
 - [x] Host visible proof.
-  `just runtime-app-host-run` launches a runtime-mode Blitz window on the desktop host, and `just runtime-app-host-smoke` exercises the same path with an auto-exit timer.
+  `just runtime-app-host-run` now prepares the bundled app plus the `deno-core-smoke` helper automatically, then launches a runtime-mode Blitz window backed by the real JS session instead of a Rust sample payload. `just runtime-app-host-smoke` exercises the same path with an auto-click plus auto-exit timer.
 - [x] Click round-trip.
   `just runtime-app-click-smoke` keeps the app alive inside one `deno_core` session, dispatches a host click event to `data-shadow-id="counter"`, and verifies the rerendered HTML updates from `Count 1` to `Count 2`.
 - [x] Basic form / input path.
