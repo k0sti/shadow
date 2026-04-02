@@ -6,6 +6,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/pixel_common.sh"
 ensure_bootimg_shell "$@"
 
+"$SCRIPT_DIR/pixel_build.sh"
 "$SCRIPT_DIR/pixel_build_blitz_demo.sh"
 "$SCRIPT_DIR/pixel_prepare_runtime_app_artifacts.sh"
 

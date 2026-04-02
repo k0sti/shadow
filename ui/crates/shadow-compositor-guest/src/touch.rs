@@ -1,6 +1,6 @@
 use std::{
     fs,
-    io::{BufRead, BufReader},
+    io::Read,
     path::{Path, PathBuf},
     process::{Command, Stdio},
     thread,
@@ -51,8 +51,9 @@ impl ContactSnapshot {
 
 #[derive(Clone, Copy, Debug, Default)]
 struct TouchFrameState {
-    current_slot: i32,
-    slot0: ContactSnapshot,
+    current_slot: usize,
+    slots: [ContactSnapshot; MAX_TOUCH_SLOTS],
+    committed_slot: Option<usize>,
     committed: ContactSnapshot,
 }
 
@@ -72,23 +73,22 @@ impl TouchFrameState {
     ) -> Option<TouchInputEvent> {
         match (event.event_type, event.code) {
             (EV_ABS, ABS_MT_SLOT) => {
-                self.current_slot = event.value;
+                if let Ok(slot) = usize::try_from(event.value) {
+                    self.current_slot = slot.min(MAX_TOUCH_SLOTS - 1);
+                }
                 None
             }
             (EV_ABS, code) => {
-                if self.current_slot != 0 {
-                    return None;
-                }
-
+                let slot = &mut self.slots[self.current_slot];
                 match code {
                     ABS_MT_TRACKING_ID => {
-                        self.slot0.tracking_id = (event.value >= 0).then_some(event.value);
+                        slot.tracking_id = (event.value >= 0).then_some(event.value);
                     }
                     ABS_MT_POSITION_X => {
-                        self.slot0.x = event.value;
+                        slot.x = event.value;
                     }
                     ABS_MT_POSITION_Y => {
-                        self.slot0.y = event.value;
+                        slot.y = event.value;
                     }
                     _ => {}
                 }
@@ -96,7 +96,9 @@ impl TouchFrameState {
             }
             (EV_SYN, SYN_REPORT) => self.flush(device, event.time_msec),
             (EV_SYN, SYN_DROPPED) => {
-                self.slot0 = self.committed;
+                if let Some(slot) = self.committed_slot {
+                    self.slots[slot] = self.committed;
+                }
                 None
             }
             _ => None,
@@ -104,27 +106,48 @@ impl TouchFrameState {
     }
 
     fn flush(&mut self, device: &TouchDeviceInfo, time_msec: u32) -> Option<TouchInputEvent> {
-        let current = self.slot0;
         let previous = self.committed;
-        let (phase, x, y) = match (previous.is_active(), current.is_active()) {
-            (false, true) => (TouchPhase::Down, current.x, current.y),
-            (true, true) if previous.x != current.x || previous.y != current.y => {
+        let current = self.active_contact();
+        let (phase, x, y) = match (previous.is_active(), current) {
+            (false, Some((_, current))) => (TouchPhase::Down, current.x, current.y),
+            (true, Some((slot, current)))
+                if self.committed_slot != Some(slot)
+                    || previous.x != current.x
+                    || previous.y != current.y =>
+            {
                 (TouchPhase::Move, current.x, current.y)
             }
-            (true, false) => (TouchPhase::Up, previous.x, previous.y),
+            (true, None) => (TouchPhase::Up, previous.x, previous.y),
             _ => {
-                self.committed = current;
+                self.committed_slot = current.map(|(slot, _)| slot);
+                self.committed = current.map(|(_, contact)| contact).unwrap_or_default();
                 return None;
             }
         };
 
-        self.committed = current;
+        self.committed_slot = current.map(|(slot, _)| slot);
+        self.committed = current.map(|(_, contact)| contact).unwrap_or_default();
         Some(TouchInputEvent {
             phase,
             normalized_x: normalize_axis(x, device.x_min, device.x_max),
             normalized_y: normalize_axis(y, device.y_min, device.y_max),
             time_msec,
         })
+    }
+
+    fn active_contact(&self) -> Option<(usize, ContactSnapshot)> {
+        if let Some(slot) = self.committed_slot {
+            let contact = self.slots[slot];
+            if contact.is_active() {
+                return Some((slot, contact));
+            }
+        }
+
+        self.slots
+            .iter()
+            .copied()
+            .enumerate()
+            .find(|(_, contact)| contact.is_active())
     }
 }
 
@@ -222,27 +245,15 @@ pub fn map_normalized_touch_to_frame(
 }
 
 fn run_touch_reader(info: TouchDeviceInfo, sender: Sender<TouchInputEvent>) -> Result<()> {
-    let touch_path = info.path.to_string_lossy().to_string();
-    let mut child = Command::new("/system/bin/getevent")
-        .arg("-lt")
-        .arg(&touch_path)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .spawn()
-        .with_context(|| format!("spawn /system/bin/getevent for {}", info.path.display()))?;
-    let stdout = child
-        .stdout
-        .take()
-        .context("capture getevent stdout for touch reader")?;
-    let reader = BufReader::new(stdout);
+    let mut reader = touch_reader_stream(&info)?;
     let mut frame_state = TouchFrameState::default();
+    let mut event_bytes = [0_u8; INPUT_EVENT_SIZE];
 
-    for line in reader.lines() {
-        let line =
-            line.with_context(|| format!("read touch events from {}", info.path.display()))?;
-        let Some(event) = parse_getevent_line(&line)? else {
-            continue;
-        };
+    loop {
+        reader
+            .read_exact(&mut event_bytes)
+            .with_context(|| format!("read touch events from {}", info.path.display()))?;
+        let event = parse_raw_touch_event(&event_bytes)?;
         if let Some(pointer_event) = frame_state.handle_event(event, &info) {
             tracing::info!(
                 "[shadow-guest-compositor] touch-reader-event phase={:?} normalized={:.3},{:.3}",
@@ -255,13 +266,10 @@ fn run_touch_reader(info: TouchDeviceInfo, sender: Sender<TouchInputEvent>) -> R
             }
         }
     }
-
-    let status = child.wait().context("wait for getevent touch reader")?;
-    Err(anyhow!(
-        "touch reader exited unexpectedly with status {status}"
-    ))
 }
 
+const INPUT_EVENT_SIZE: usize = 24;
+const MAX_TOUCH_SLOTS: usize = 10;
 const EV_SYN: u16 = 0x00;
 const EV_ABS: u16 = 0x03;
 const SYN_REPORT: u16 = 0x00;
@@ -271,80 +279,85 @@ const ABS_MT_POSITION_X: u16 = 0x35;
 const ABS_MT_POSITION_Y: u16 = 0x36;
 const ABS_MT_TRACKING_ID: u16 = 0x39;
 
-fn parse_getevent_line(line: &str) -> Result<Option<RawTouchEvent>> {
-    let Some(close_index) = line.find(']') else {
-        return Ok(None);
-    };
-    let timestamp = line[1..close_index].trim();
-    let mut fields = line[close_index + 1..].split_whitespace();
-    let Some(event_kind) = fields.next() else {
-        return Ok(None);
-    };
-    let Some(event_code) = fields.next() else {
-        return Ok(None);
-    };
-    let Some(event_value) = fields.next() else {
-        return Ok(None);
-    };
-
-    let time_msec = parse_getevent_time_msec(timestamp)?;
-    let parsed = match (event_kind, event_code) {
-        ("EV_ABS", "ABS_MT_SLOT") => Some(RawTouchEvent {
-            event_type: EV_ABS,
-            code: ABS_MT_SLOT,
-            value: parse_getevent_hex_i32(event_value)?,
-            time_msec,
-        }),
-        ("EV_ABS", "ABS_MT_TRACKING_ID") => Some(RawTouchEvent {
-            event_type: EV_ABS,
-            code: ABS_MT_TRACKING_ID,
-            value: parse_getevent_hex_i32(event_value)?,
-            time_msec,
-        }),
-        ("EV_ABS", "ABS_MT_POSITION_X") => Some(RawTouchEvent {
-            event_type: EV_ABS,
-            code: ABS_MT_POSITION_X,
-            value: parse_getevent_hex_i32(event_value)?,
-            time_msec,
-        }),
-        ("EV_ABS", "ABS_MT_POSITION_Y") => Some(RawTouchEvent {
-            event_type: EV_ABS,
-            code: ABS_MT_POSITION_Y,
-            value: parse_getevent_hex_i32(event_value)?,
-            time_msec,
-        }),
-        ("EV_SYN", "SYN_REPORT") => Some(RawTouchEvent {
-            event_type: EV_SYN,
-            code: SYN_REPORT,
-            value: 0,
-            time_msec,
-        }),
-        ("EV_SYN", "SYN_DROPPED") => Some(RawTouchEvent {
-            event_type: EV_SYN,
-            code: SYN_DROPPED,
-            value: 0,
-            time_msec,
-        }),
-        _ => None,
-    };
-
-    Ok(parsed)
-}
-
-fn parse_getevent_time_msec(timestamp: &str) -> Result<u32> {
-    let (seconds, fraction) = timestamp
-        .split_once('.')
-        .ok_or_else(|| anyhow!("parse getevent timestamp: {timestamp}"))?;
-    let seconds: i64 = seconds.trim().parse()?;
-    let micros: i64 = fraction.trim().parse()?;
-    Ok(seconds
+fn parse_raw_touch_event(bytes: &[u8; INPUT_EVENT_SIZE]) -> Result<RawTouchEvent> {
+    let seconds = i64::from_ne_bytes(bytes[0..8].try_into().expect("time seconds"));
+    let micros = i64::from_ne_bytes(bytes[8..16].try_into().expect("time micros"));
+    let event_type = u16::from_ne_bytes(bytes[16..18].try_into().expect("event type"));
+    let code = u16::from_ne_bytes(bytes[18..20].try_into().expect("event code"));
+    let value = i32::from_ne_bytes(bytes[20..24].try_into().expect("event value"));
+    let time_msec = seconds
         .saturating_mul(1_000)
         .saturating_add(micros.div_euclid(1_000))
-        .clamp(0, i64::from(u32::MAX)) as u32)
+        .clamp(0, i64::from(u32::MAX)) as u32;
+
+    Ok(RawTouchEvent {
+        event_type,
+        code,
+        value,
+        time_msec,
+    })
 }
 
-fn parse_getevent_hex_i32(value: &str) -> Result<i32> {
-    Ok(u32::from_str_radix(value, 16)? as i32)
+fn touch_reader_stream(info: &TouchDeviceInfo) -> Result<Box<dyn Read + Send>> {
+    let touch_path = info.path.to_string_lossy().to_string();
+    let dd_command = format!("dd if={touch_path} bs={INPUT_EVENT_SIZE} status=none");
+    for helper in ["/debug_ramdisk/su", "su"] {
+        match Command::new(helper)
+            .arg("0")
+            .arg("sh")
+            .arg("-c")
+            .arg(&dd_command)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()
+        {
+            Ok(mut child) => {
+                let stdout = child
+                    .stdout
+                    .take()
+                    .context("capture dd touch reader stdout")?;
+                tracing::info!(
+                    "[shadow-guest-compositor] touch-reader-helper helper={} pid={}",
+                    helper,
+                    child.id()
+                );
+                return Ok(Box::new(ChildReader { child, stdout }));
+            }
+            Err(error) => {
+                tracing::warn!(
+                    "[shadow-guest-compositor] touch-reader-helper-failed helper={} error={}",
+                    helper,
+                    error
+                );
+            }
+        }
+    }
+
+    tracing::info!(
+        "[shadow-guest-compositor] touch-reader-direct device={}",
+        info.path.display()
+    );
+    Ok(Box::new(fs::File::open(&info.path).with_context(|| {
+        format!("open touch device {}", info.path.display())
+    })?))
+}
+
+struct ChildReader {
+    child: std::process::Child,
+    stdout: std::process::ChildStdout,
+}
+
+impl Read for ChildReader {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        self.stdout.read(buf)
+    }
+}
+
+impl Drop for ChildReader {
+    fn drop(&mut self) {
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+    }
 }
 
 fn touch_device_info(path: &Path, device: &Device) -> Option<TouchDeviceInfo> {
@@ -405,8 +418,8 @@ fn time_msec(timestamp: SystemTime) -> u32 {
 #[cfg(test)]
 mod tests {
     use super::{
-        map_normalized_touch_to_frame, ContactSnapshot, TouchDeviceInfo, TouchFrameState,
-        TouchPhase,
+        map_normalized_touch_to_frame, parse_raw_touch_event, ContactSnapshot, TouchDeviceInfo,
+        TouchFrameState, TouchPhase,
     };
 
     fn test_device() -> TouchDeviceInfo {
@@ -425,7 +438,7 @@ mod tests {
         let device = test_device();
         let mut state = TouchFrameState::default();
 
-        state.slot0 = ContactSnapshot {
+        state.slots[0] = ContactSnapshot {
             tracking_id: Some(1),
             x: 540,
             y: 1200,
@@ -433,15 +446,53 @@ mod tests {
         let down = state.flush(&device, 10).expect("down event");
         assert_eq!(down.phase, TouchPhase::Down);
 
-        state.slot0.x = 600;
+        state.slots[0].x = 600;
         let moved = state.flush(&device, 20).expect("move event");
         assert_eq!(moved.phase, TouchPhase::Move);
 
-        state.slot0.tracking_id = None;
+        state.slots[0].tracking_id = None;
         let up = state.flush(&device, 30).expect("up event");
         assert_eq!(up.phase, TouchPhase::Up);
 
         assert!(state.flush(&device, 40).is_none());
+    }
+
+    #[test]
+    fn touch_state_tracks_nonzero_active_slot() {
+        let device = test_device();
+        let mut state = TouchFrameState::default();
+        state.current_slot = 3;
+        state.handle_event(
+            super::RawTouchEvent {
+                event_type: super::EV_ABS,
+                code: super::ABS_MT_TRACKING_ID,
+                value: 7,
+                time_msec: 10,
+            },
+            &device,
+        );
+        state.handle_event(
+            super::RawTouchEvent {
+                event_type: super::EV_ABS,
+                code: super::ABS_MT_POSITION_X,
+                value: 900,
+                time_msec: 10,
+            },
+            &device,
+        );
+        state.handle_event(
+            super::RawTouchEvent {
+                event_type: super::EV_ABS,
+                code: super::ABS_MT_POSITION_Y,
+                value: 2000,
+                time_msec: 10,
+            },
+            &device,
+        );
+        let down = state.flush(&device, 10).expect("down event");
+        assert_eq!(down.phase, TouchPhase::Down);
+        assert!(down.normalized_x > 0.8);
+        assert!(down.normalized_y > 0.8);
     }
 
     #[test]
@@ -454,5 +505,26 @@ mod tests {
             map_normalized_touch_to_frame(0.0, 0.0, 1080, 2340, 384, 720),
             None
         );
+    }
+
+    #[test]
+    fn parse_raw_touch_event_parses_axis_and_sync_events() {
+        let x = parse_raw_touch_event(&[
+            0xbd, 0x91, 0xce, 0x69, 0x00, 0x00, 0x00, 0x00, 0x3e, 0x8d, 0x0b, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x03, 0x00, 0x35, 0x00, 0xe8, 0x03, 0x00, 0x00,
+        ])
+        .expect("parse event");
+        assert_eq!(x.event_type, super::EV_ABS);
+        assert_eq!(x.code, super::ABS_MT_POSITION_X);
+        assert_eq!(x.value, 1000);
+
+        let sync = parse_raw_touch_event(&[
+            0xbd, 0x91, 0xce, 0x69, 0x00, 0x00, 0x00, 0x00, 0x3e, 0x8d, 0x0b, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        ])
+        .expect("parse event");
+        assert_eq!(sync.event_type, super::EV_SYN);
+        assert_eq!(sync.code, super::SYN_REPORT);
+        assert_eq!(sync.value, 0);
     }
 }

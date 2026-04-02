@@ -406,6 +406,10 @@ pixel-prepare-runtime-app-artifacts:
 pixel-runtime-app-drm:
 	@scripts/pixel_runtime_app_drm.sh
 
+# Run the runtime-mode Blitz demo on the rooted Pixel, keep the panel seized, and leave Android stopped for manual tap QA
+pixel-runtime-app-drm-hold:
+	@scripts/pixel_runtime_app_drm_hold.sh
+
 # Run the runtime-mode Blitz demo on the rooted Pixel and auto-dispatch one runtime click
 pixel-runtime-app-click-drm:
 	@scripts/pixel_runtime_app_click_drm.sh

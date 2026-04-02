@@ -181,6 +181,33 @@ impl RuntimeDocument {
     }
 
     fn handle_runtime_ui_event(&mut self, event: UiEvent) {
+        match &event {
+            UiEvent::PointerDown(pointer) => {
+                eprintln!(
+                    "[shadow-runtime-demo] ui-pointer-down x={} y={} primary={}",
+                    pointer.client_x(),
+                    pointer.client_y(),
+                    pointer.is_primary
+                );
+            }
+            UiEvent::PointerMove(pointer) => {
+                eprintln!(
+                    "[shadow-runtime-demo] ui-pointer-move x={} y={} primary={}",
+                    pointer.client_x(),
+                    pointer.client_y(),
+                    pointer.is_primary
+                );
+            }
+            UiEvent::PointerUp(pointer) => {
+                eprintln!(
+                    "[shadow-runtime-demo] ui-pointer-up x={} y={} primary={}",
+                    pointer.client_x(),
+                    pointer.client_y(),
+                    pointer.is_primary
+                );
+            }
+            _ => {}
+        }
         let Some(runtime_event) = self.runtime_event_for_ui_event(&event) else {
             return;
         };
