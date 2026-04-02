@@ -78,8 +78,9 @@ This also sets the current boundary for the Blitz + Deno demo on device:
 7. The first visible host proof now composes that seam into a real window with the real runtime attached: a helper `deno_core` process keeps the bundled app alive, Rust owns the persistent Blitz frame, and the host swaps in each returned HTML snapshot.
 8. The first reactive host proof now uses that same helper session end-to-end: host-dispatched click events target `data-shadow-id` nodes, JS handlers mutate Solid state, and the app emits a fresh HTML snapshot back into the Blitz document.
 9. The first form/input proof keeps that same contract intentionally small: host `change` events may carry a string `value`, the runtime updates the target element state before invoking the JS handler, and the app emits the next HTML snapshot.
-10. The rooted Pixel loop now proves the same runtime contract on the real panel: a static Blitz client launches under the guest compositor, spawns the GNU-wrapped helper via a tiny shell launcher, and points it at the bundled app JS pushed into the same device directory.
-11. Full-root HTML snapshots still win the MVP tradeoff after the device proof. Host and rooted-Pixel click rerenders both complete fast enough that a Rust-side patch bridge would be premature; the next pressure point is likely text input, focus, or more animated apps rather than simple card flows.
+10. The helper backend is now swappable on the host: the same `render` / `dispatch` stdio session contract works with either `deno_core` or `deno_runtime`, so runtime capability experiments no longer need a separate Blitz bridge.
+11. The rooted Pixel loop now proves the same runtime contract on the real panel: a static Blitz client launches under the guest compositor, spawns the GNU-wrapped helper via a tiny shell launcher, and points it at the bundled app JS pushed into the same device directory.
+12. Full-root HTML snapshots still win the MVP tradeoff after the device proof. Host and rooted-Pixel click rerenders both complete fast enough that a Rust-side patch bridge would be premature; the next pressure point is likely text input, focus, or more animated apps rather than simple card flows.
 
 For the newly unlocked-and-rooted Pixel track, the intended operator ladder is now:
 

@@ -3,12 +3,15 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+# shellcheck source=./runtime_host_backend_common.sh
+source "$SCRIPT_DIR/runtime_host_backend_common.sh"
 INPUT_PATH="runtime/app-input-smoke/app.tsx"
 CACHE_DIR="build/runtime/app-input-smoke"
 RESULT_EXPR='JSON.stringify(globalThis.SHADOW_RUNTIME_APP.dispatch({type:"change",targetId:"draft",value:"hello from change"}))'
 EXPECTED_HTML='<main class="compose"><label class="field"><span>Draft</span><input class="field-input" data-shadow-id="draft" name="draft" value="hello from change"></label><p class="preview">Preview: hello from change</p></main>'
 
 cd "$REPO_ROOT"
+runtime_host_backend_resolve
 
 bundle_json="$(
   deno run --quiet --allow-env --allow-read --allow-write --allow-run \
@@ -23,7 +26,7 @@ bundle_path="$(
 )"
 
 smoke_output="$(
-  nix run --accept-flake-config .#deno-core-smoke -- \
+  nix run --accept-flake-config ".#${SHADOW_RUNTIME_HOST_PACKAGE_ATTR}" -- \
     "$bundle_path" \
     --result-expr "$RESULT_EXPR"
 )"
@@ -49,9 +52,9 @@ for line in reversed(payload.splitlines()):
     print(json.dumps(document, indent=2))
     break
 else:
-    raise SystemExit("could not find document payload in deno_core output")
+    raise SystemExit("could not find document payload in runtime host output")
 ' "$EXPECTED_HTML"
 )"
 printf '%s\n' "$document_json"
 
-printf 'Runtime app input smoke succeeded: %s\n' "$bundle_path"
+printf 'Runtime app input smoke succeeded: backend=%s bundle=%s\n' "$SHADOW_RUNTIME_HOST_BACKEND" "$bundle_path"

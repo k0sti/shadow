@@ -28,9 +28,11 @@ Living note. Revise it as we learn. Do not treat this as a fixed contract.
 10. Done: bundle the first app-runtime artifact into one local JS module so `deno_core` can stay file-backed while the build step still pulls Solid runtime code from npm.
 11. Done: add a long-lived host session mode to the tiny `deno_core` helper so the visible Blitz host can render and dispatch events without embedding the JS runtime directly into the UI crate.
 12. Done: reuse that same helper on the rooted Pixel by staging the bundled app JS beside a GNU-wrapped `deno-core-smoke` closure and pointing the static Blitz client at the wrapper script.
-13. Next: decide whether the first GNU envelope stays the runtime substrate long-term or whether we retarget toward a more self-contained payload.
-14. Next: decide whether the app-runtime lane should stay on `deno_core` for now or promote to `deno_runtime` only once it needs features that justify the heavier runtime.
-15. Later: if the app-runtime lane needs it, define the first repo-owned protocol above `deno_runtime` and evaluate swapping the current helper backend.
+13. Done: prove the same host app/session contract on `deno_runtime`.
+    The helper backend is now swappable on host without changing the Blitz-side session protocol.
+14. Next: decide whether the first GNU envelope stays the runtime substrate long-term or whether we retarget toward a more self-contained payload.
+15. Next: decide whether the app-runtime lane should stay on `deno_core` for now or promote to `deno_runtime` only once it needs features that justify the heavier runtime.
+16. Later: if the app-runtime lane needs it, define the first repo-owned protocol above `deno_runtime` and evaluate swapping the current helper backend.
 
 ## Open Questions
 

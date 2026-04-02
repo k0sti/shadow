@@ -1,4 +1,5 @@
 use std::env;
+use std::io::{self, BufRead, Write};
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -7,6 +8,7 @@ use deno_core::FsModuleLoader;
 use deno_core::anyhow::{Context, Result, anyhow};
 use deno_resolver::npm::ByonmNpmResolver;
 use deno_resolver::npm::DenoInNpmPackageChecker;
+use serde::{Deserialize, Serialize};
 use deno_runtime::BootstrapOptions;
 use deno_runtime::FeatureChecker;
 use deno_runtime::WorkerExecutionMode;
@@ -20,6 +22,8 @@ use sys_traits::impls::RealSys;
 
 static RUNTIME_SNAPSHOT: &[u8] =
     include_bytes!(concat!(env!("OUT_DIR"), "/RUNTIME_SNAPSHOT.bin"));
+const DEFAULT_RESULT_EXPR: &str = "globalThis.RUNTIME_SMOKE_RESULT";
+const RENDER_EXPR: &str = "globalThis.SHADOW_RUNTIME_HOST.render()";
 
 fn main() -> Result<()> {
     let runtime = tokio::runtime::Builder::new_current_thread()
@@ -30,7 +34,8 @@ fn main() -> Result<()> {
 }
 
 async fn run() -> Result<()> {
-    let main_module = resolve_main_module()?;
+    let cli_options = parse_options()?;
+    let main_module = resolve_main_module(cli_options.module_path)?;
     let descriptor_parser = Arc::new(RuntimePermissionDescriptorParser::new(
         RealSys::default(),
     ));
@@ -51,7 +56,7 @@ async fn run() -> Result<()> {
         v8_code_cache: Default::default(),
         bundle_provider: None,
     };
-    let options = WorkerOptions {
+    let worker_options = WorkerOptions {
         bootstrap: BootstrapOptions {
             mode: WorkerExecutionMode::Run,
             ..Default::default()
@@ -64,7 +69,7 @@ async fn run() -> Result<()> {
         DenoInNpmPackageChecker,
         ByonmNpmResolver<RealSys>,
         RealSys,
-    >(&main_module, services, options);
+    >(&main_module, services, worker_options);
 
     worker
         .execute_main_module(&main_module)
@@ -75,19 +80,11 @@ async fn run() -> Result<()> {
         .await
         .context("drain runtime event loop after main module")?;
 
-    let value = worker
-        .execute_script(
-            "<result>",
-            String::from("globalThis.RUNTIME_SMOKE_RESULT").into(),
-        )
-        .context("read runtime smoke result")?;
+    if cli_options.session {
+        return run_session(&mut worker).await;
+    }
 
-    deno_core::scope!(scope, &mut worker.js_runtime);
-    let local = deno_core::v8::Local::new(scope, value);
-    let value = local
-        .to_string(scope)
-        .ok_or_else(|| anyhow!("runtime smoke result was not a string"))?
-        .to_rust_string_lossy(scope);
+    let value = execute_string_expr(&mut worker, &cli_options.result_expr, "<result>").await?;
 
     println!(
         "deno_runtime ok: target={} module={} result={value}",
@@ -97,9 +94,121 @@ async fn run() -> Result<()> {
     Ok(())
 }
 
-fn resolve_main_module() -> Result<deno_core::url::Url> {
-    if let Some(arg) = env::args().nth(1) {
-        return resolve_from_cwd(arg);
+async fn run_session(
+    worker: &mut MainWorker,
+) -> Result<()> {
+    let stdin = io::stdin();
+    let stdout = io::stdout();
+    let mut stdout = stdout.lock();
+
+    for line in stdin.lock().lines() {
+        let line = line.context("read session request")?;
+        if line.trim().is_empty() {
+            continue;
+        }
+
+        let response = match serde_json::from_str::<SessionRequest>(&line) {
+            Ok(request) => match handle_session_request(worker, request).await {
+                Ok(payload) => SessionResponse::Ok { payload },
+                Err(error) => SessionResponse::Error {
+                    message: error.to_string(),
+                },
+            },
+            Err(error) => SessionResponse::Error {
+                message: format!("parse session request: {error}"),
+            },
+        };
+
+        let encoded =
+            serde_json::to_string(&response).context("encode runtime session response")?;
+        writeln!(stdout, "{encoded}").context("write runtime session response")?;
+        stdout.flush().context("flush runtime session response")?;
+    }
+
+    Ok(())
+}
+
+async fn handle_session_request(
+    worker: &mut MainWorker,
+    request: SessionRequest,
+) -> Result<RuntimeDocumentPayload> {
+    let expr = match request {
+        SessionRequest::Render => String::from(RENDER_EXPR),
+        SessionRequest::Dispatch { event } => {
+            let event_json =
+                serde_json::to_string(&event).context("encode runtime dispatch event")?;
+            format!("globalThis.SHADOW_RUNTIME_HOST.dispatch({event_json})")
+        }
+    };
+
+    let payload_json = execute_string_expr(worker, &expr, "<session>").await?;
+    serde_json::from_str(&payload_json).context("decode runtime document payload")
+}
+
+async fn execute_string_expr(
+    worker: &mut MainWorker,
+    expr: &str,
+    script_name: &'static str,
+) -> Result<String> {
+    let value = worker
+        .execute_script(script_name, expr.to_owned().into())
+        .with_context(|| format!("execute script {script_name}"))?;
+    worker
+        .run_event_loop(false)
+        .await
+        .with_context(|| format!("drain runtime event loop after {script_name}"))?;
+
+    deno_core::scope!(scope, &mut worker.js_runtime);
+    let local = deno_core::v8::Local::new(scope, value);
+    let value = local
+        .to_string(scope)
+        .ok_or_else(|| anyhow!("runtime expression did not evaluate to a string"))?
+        .to_rust_string_lossy(scope);
+
+    Ok(value)
+}
+
+struct Options {
+    module_path: Option<String>,
+    result_expr: String,
+    session: bool,
+}
+
+fn parse_options() -> Result<Options> {
+    let mut args = env::args().skip(1);
+    let mut module_path = None;
+    let mut result_expr = String::from(DEFAULT_RESULT_EXPR);
+    let mut session = false;
+
+    while let Some(arg) = args.next() {
+        match arg.as_str() {
+            "--result-expr" => {
+                result_expr = args
+                    .next()
+                    .ok_or_else(|| anyhow!("missing value for --result-expr"))?;
+            }
+            "--session" => {
+                session = true;
+            }
+            _ if module_path.is_none() => {
+                module_path = Some(arg);
+            }
+            _ => {
+                return Err(anyhow!("unknown argument: {arg}"));
+            }
+        }
+    }
+
+    Ok(Options {
+        module_path,
+        result_expr,
+        session,
+    })
+}
+
+fn resolve_main_module(module_path: Option<String>) -> Result<deno_core::url::Url> {
+    if let Some(path) = module_path {
+        return resolve_from_cwd(path);
     }
 
     for candidate in bundled_module_candidates()? {
@@ -132,4 +241,34 @@ fn bundled_module_candidates() -> Result<Vec<PathBuf>> {
         .into_iter()
         .chain(std::iter::once(manifest_bundle))
         .collect())
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(tag = "op", rename_all = "snake_case")]
+enum SessionRequest {
+    Render,
+    Dispatch { event: RuntimeDispatchEvent },
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+struct RuntimeDispatchEvent {
+    #[serde(rename = "targetId")]
+    target_id: String,
+    #[serde(rename = "type")]
+    event_type: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    value: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+struct RuntimeDocumentPayload {
+    html: String,
+    css: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(tag = "status", rename_all = "snake_case")]
+enum SessionResponse {
+    Ok { payload: RuntimeDocumentPayload },
+    Error { message: String },
 }

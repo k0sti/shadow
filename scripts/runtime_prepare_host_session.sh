@@ -3,10 +3,13 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+# shellcheck source=./runtime_host_backend_common.sh
+source "$SCRIPT_DIR/runtime_host_backend_common.sh"
 INPUT_PATH="${SHADOW_RUNTIME_APP_INPUT_PATH:-runtime/app-compile-smoke/app.tsx}"
 CACHE_DIR="${SHADOW_RUNTIME_APP_CACHE_DIR:-build/runtime/app-host}"
 
 cd "$REPO_ROOT"
+runtime_host_backend_resolve
 
 bundle_json="$(
   nix develop .#runtime -c deno run --quiet \
@@ -28,20 +31,21 @@ print(os.path.abspath(data["bundlePath"]))
 )"
 
 runtime_host_prefix="$(
-  nix build --accept-flake-config .#deno-core-smoke --no-link --print-out-paths
+  nix build --accept-flake-config ".#${SHADOW_RUNTIME_HOST_PACKAGE_ATTR}" --no-link --print-out-paths
 )"
-runtime_host_binary_path="${runtime_host_prefix}/bin/deno-core-smoke"
+runtime_host_binary_path="${runtime_host_prefix}/bin/${SHADOW_RUNTIME_HOST_BINARY_NAME}"
 
-python3 - "$bundle_path" "$runtime_host_binary_path" "$INPUT_PATH" "$CACHE_DIR" <<'PY'
+python3 - "$bundle_path" "$runtime_host_binary_path" "$INPUT_PATH" "$CACHE_DIR" "$SHADOW_RUNTIME_HOST_BACKEND" <<'PY'
 import json
 import os
 import sys
 
-bundle_path, runtime_host_binary_path, input_path, cache_dir = sys.argv[1:5]
+bundle_path, runtime_host_binary_path, input_path, cache_dir, backend = sys.argv[1:6]
 print(json.dumps({
     "bundlePath": bundle_path,
     "cacheDir": cache_dir,
     "inputPath": input_path,
+    "runtimeHostBackend": backend,
     "runtimeHostBinaryPath": runtime_host_binary_path,
 }, indent=2))
 PY

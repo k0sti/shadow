@@ -107,13 +107,25 @@ runtime-app-compile-smoke:
 runtime-app-document-smoke:
 	@nix develop .#runtime -c scripts/runtime_app_document_smoke.sh
 
+# Run the first app document payload through the Deno Runtime host seam
+runtime-app-document-smoke-deno-runtime:
+	@SHADOW_RUNTIME_HOST_BACKEND=deno-runtime nix develop .#runtime -c scripts/runtime_app_document_smoke.sh
+
 # Run the first host-dispatched click through the bundled app runtime seam
 runtime-app-click-smoke:
 	@nix develop .#runtime -c scripts/runtime_app_click_smoke.sh
 
+# Run the first host-dispatched click through the bundled app runtime seam on Deno Runtime
+runtime-app-click-smoke-deno-runtime:
+	@SHADOW_RUNTIME_HOST_BACKEND=deno-runtime nix develop .#runtime -c scripts/runtime_app_click_smoke.sh
+
 # Run the first host-dispatched change event through the bundled app runtime seam
 runtime-app-input-smoke:
 	@nix develop .#runtime -c scripts/runtime_app_input_smoke.sh
+
+# Run the first host-dispatched change event through the bundled app runtime seam on Deno Runtime
+runtime-app-input-smoke-deno-runtime:
+	@SHADOW_RUNTIME_HOST_BACKEND=deno-runtime nix develop .#runtime -c scripts/runtime_app_input_smoke.sh
 
 # Run the fixed-frame Blitz document smoke for app payload swapping
 runtime-app-blitz-document-smoke:
@@ -123,9 +135,17 @@ runtime-app-blitz-document-smoke:
 runtime-app-host-run:
 	@scripts/runtime_app_host_run.sh
 
+# Run the host-visible runtime demo window on Deno Runtime
+runtime-app-host-run-deno-runtime:
+	@SHADOW_RUNTIME_HOST_BACKEND=deno-runtime scripts/runtime_app_host_run.sh
+
 # Run the host-visible runtime demo with an auto-exit smoke timer
 runtime-app-host-smoke:
 	@scripts/runtime_app_host_smoke.sh
+
+# Run the host-visible runtime demo with an auto-exit smoke timer on Deno Runtime
+runtime-app-host-smoke-deno-runtime:
+	@SHADOW_RUNTIME_HOST_BACKEND=deno-runtime scripts/runtime_app_host_smoke.sh
 
 # Build the minimal Rusty V8 smoke binary for x86_64 Linux
 runtime-rusty-v8-smoke-x86_64-linux-gnu:
