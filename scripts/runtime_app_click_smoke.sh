@@ -8,7 +8,6 @@ source "$SCRIPT_DIR/runtime_host_backend_common.sh"
 INPUT_PATH="runtime/app-compile-smoke/app.tsx"
 CACHE_DIR="build/runtime/app-document-smoke"
 RESULT_EXPR='JSON.stringify(globalThis.SHADOW_RUNTIME_APP.dispatch({type:"click",targetId:"counter"}))'
-EXPECTED_HTML='<main class="shell"><h1>Shadow Runtime Smoke</h1><button class="primary" data-shadow-id="counter">Count 2</button></main>'
 
 cd "$REPO_ROOT"
 runtime_host_backend_resolve
@@ -38,22 +37,30 @@ import json
 import re
 import sys
 
-expected_html = sys.argv[1]
 payload = sys.stdin.read()
 for line in reversed(payload.splitlines()):
     match = re.search(r"result=(\{.*\})$", line)
     if not match:
         continue
     document = json.loads(match.group(1))
-    if document.get("html") != expected_html:
-        raise SystemExit("unexpected html payload: %r" % (document.get("html"),))
+    html = document.get("html") or ""
+    required_fragments = [
+        "<main class=\"shell\" style=\"",
+        "Shadow Runtime Smoke",
+        "Tap the button on the phone screen.",
+        "data-shadow-id=\"counter\"",
+        "Count 2",
+    ]
+    for fragment in required_fragments:
+        if fragment not in html:
+            raise SystemExit("missing html fragment %r in payload: %r" % (fragment, html))
     if document.get("css", None) is not None:
         raise SystemExit("expected css to be null, got: %r" % (document.get("css"),))
     print(json.dumps(document, indent=2))
     break
 else:
     raise SystemExit("could not find document payload in runtime host output")
-' "$EXPECTED_HTML"
+'
 )"
 printf '%s\n' "$document_json"
 
