@@ -5,7 +5,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 INPUT_PATH="runtime/app-compile-smoke/app.tsx"
 CACHE_DIR="build/runtime/app-document-smoke"
-EXPECTED_HTML='<main class="shell"><h1>Shadow Runtime Smoke</h1><button class="primary" data-shadow-id="counter">Count 1</button></main>'
+RESULT_EXPR='JSON.stringify(globalThis.SHADOW_RUNTIME_APP.dispatch({type:"click",targetId:"counter"}))'
+EXPECTED_HTML='<main class="shell"><h1>Shadow Runtime Smoke</h1><button class="primary" data-shadow-id="counter">Count 2</button></main>'
 
 cd "$REPO_ROOT"
 
@@ -22,7 +23,9 @@ bundle_path="$(
 )"
 
 smoke_output="$(
-  nix run --accept-flake-config .#deno-core-smoke -- "$bundle_path"
+  nix run --accept-flake-config .#deno-core-smoke -- \
+    "$bundle_path" \
+    --result-expr "$RESULT_EXPR"
 )"
 printf '%s\n' "$smoke_output"
 
@@ -51,4 +54,4 @@ else:
 )"
 printf '%s\n' "$document_json"
 
-printf 'Runtime app document smoke succeeded: %s\n' "$bundle_path"
+printf 'Runtime app click smoke succeeded: %s\n' "$bundle_path"

@@ -12,6 +12,8 @@ use deno_core::extension;
 use deno_core::op2;
 use deno_error::JsErrorBox;
 
+const DEFAULT_RESULT_EXPR: &str = "globalThis.RUNTIME_SMOKE_RESULT";
+
 #[op2]
 #[string]
 async fn op_runtime_message(#[string] prefix: String) -> Result<String, JsErrorBox> {
@@ -30,7 +32,8 @@ fn main() -> Result<()> {
 }
 
 async fn run() -> Result<()> {
-    let main_module = resolve_main_module()?;
+    let options = parse_options()?;
+    let main_module = resolve_main_module(options.module_path)?;
     let mut runtime = JsRuntime::new(RuntimeOptions {
         module_loader: Some(Rc::new(FsModuleLoader)),
         extensions: vec![runtime_smoke_extension::init()],
@@ -49,7 +52,7 @@ async fn run() -> Result<()> {
     evaluation.await.context("evaluate module")?;
 
     let value = runtime
-        .execute_script("<result>", "globalThis.RUNTIME_SMOKE_RESULT")
+        .execute_script("<result>", options.result_expr)
         .context("read runtime smoke result")?;
 
     deno_core::scope!(scope, runtime);
@@ -67,9 +70,41 @@ async fn run() -> Result<()> {
     Ok(())
 }
 
-fn resolve_main_module() -> Result<deno_core::url::Url> {
-    if let Some(arg) = env::args().nth(1) {
-        return resolve_from_cwd(arg);
+struct Options {
+    module_path: Option<String>,
+    result_expr: String,
+}
+
+fn parse_options() -> Result<Options> {
+    let mut args = env::args().skip(1);
+    let mut module_path = None;
+    let mut result_expr = String::from(DEFAULT_RESULT_EXPR);
+
+    while let Some(arg) = args.next() {
+        match arg.as_str() {
+            "--result-expr" => {
+                result_expr = args
+                    .next()
+                    .ok_or_else(|| anyhow!("missing value for --result-expr"))?;
+            }
+            _ if module_path.is_none() => {
+                module_path = Some(arg);
+            }
+            _ => {
+                return Err(anyhow!("unknown argument: {arg}"));
+            }
+        }
+    }
+
+    Ok(Options {
+        module_path,
+        result_expr,
+    })
+}
+
+fn resolve_main_module(module_path: Option<String>) -> Result<deno_core::url::Url> {
+    if let Some(path) = module_path {
+        return resolve_from_cwd(path);
     }
 
     for candidate in bundled_module_candidates()? {

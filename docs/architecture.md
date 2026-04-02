@@ -53,6 +53,7 @@ The current operator ladder reflects that split:
 14. `just runtime-app-document-smoke` is the next host-side rung: it proves the compiled app bundle can execute through the embedded `deno_core` runtime and return the first `{ html, css }` document payload before Blitz is involved.
 15. `just runtime-app-blitz-document-smoke` is the first Rust-side Blitz bridge rung: it proves a fixed-frame `HtmlDocument` can swap runtime CSS and app HTML into persistent frame slots before a visible host window is involved.
 16. `just runtime-app-host-run` and `just runtime-app-host-smoke` are the first visible host proof: launch a runtime-mode Blitz window backed by the new frame seam, with the smoke variant auto-exiting after the first host frame.
+17. `just runtime-app-click-smoke` is the first reactive host proof: keep the bundled app alive inside one `deno_core` session, dispatch a host click into the JS handler table, and verify the rerendered HTML snapshot changes.
 
 This is intentionally not yet a full custom userland boot. The repo is using the smallest reliable transport at each layer: first-stage wrapper for `/init` proof, then post-boot guest session launch for display and compositor iteration.
 
@@ -68,10 +69,11 @@ This also sets the current boundary for the Blitz + Deno demo on device:
 2. Official Deno Linux arm64 releases are dynamically linked against GNU libc (`/lib/ld-linux-aarch64.so.1`) and do not execute in the stock Android shell environment on the Pixel 4a.
 3. The first proven device-side runtime seam in this repo is now a rooted GNU envelope: push a Linux ARM64 binary, its ELF loader, the small glibc closure it needs, and its JS modules into `/data/local/tmp`, then invoke the loader directly.
 4. The first proven app-model seam on the host is now the compile step: Deno runs Babel with `babel-preset-solid` in universal mode and emits imports for a custom renderer module instead of a browser DOM target.
-5. The next proven host seam is the first document payload: bundle the compiled app plus a tiny renderer shim as file-backed ES modules, run them through the embedded `deno_core` runtime, and read `{ html, css }` back out without a browser.
+5. The next proven host seam is the first document payload: compile the app, rewrite runtime alias imports, bundle the app plus the renderer shim into one local JS file, run that through the embedded `deno_core` runtime, and read `{ html, css }` back out without a browser.
 6. The first proven Rust-side Blitz seam on the host is now a fixed frame with stable style/root slots: mutate those slots with `set_inner_html`, keep the outer document persistent, and leave visible host integration for the next rung.
 7. The first visible host proof now composes that seam into a real window: runtime-shaped payload, persistent Blitz frame, and a sample app card rendered on screen without the browser.
-8. Reaching full Blitz-on-device still needs more runtime work beyond the current Pixel compositor loop: either stabilize that Linux userspace envelope for the real runtime, retarget to a more self-contained payload, or replace the subprocess model with an embedded JS runtime seam.
+8. The first reactive host proof now keeps JS state inside one embedded runtime session: host-dispatched click events target `data-shadow-id` nodes, JS handlers mutate Solid state, and the app emits a fresh HTML snapshot.
+9. Reaching full Blitz-on-device still needs more runtime work beyond the current Pixel compositor loop: either stabilize that Linux userspace envelope for the real runtime, retarget to a more self-contained payload, or replace the subprocess model with an embedded JS runtime seam.
 
 For the newly unlocked-and-rooted Pixel track, the intended operator ladder is now:
 

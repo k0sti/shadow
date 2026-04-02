@@ -40,13 +40,13 @@ Living note. Revise it as we learn. Do not treat this as a fixed contract.
 - [x] Host-only TSX compile smoke.
   `just runtime-app-compile-smoke` runs Deno + Babel + Solid universal mode and caches compiled JS under `build/runtime/app-compile-smoke/`.
 - [x] `deno_core` load compiled module.
-  `just runtime-app-document-smoke` bundles the compiled app with a tiny renderer shim, runs it through `nix run .#deno-core-smoke`, and returns the first `{ html, css }` payload on host.
+  `just runtime-app-document-smoke` bundles the compiled app plus the Solid-style renderer shim into one local JS file, runs it through `nix run .#deno-core-smoke`, and returns the first `{ html, css }` payload on host.
 - [x] Rust `BlitzRuntimeDocument`.
   `just runtime-app-blitz-document-smoke` proves a fixed-frame Blitz document can swap the `<style>` and app root inner HTML from a runtime payload.
 - [x] Host visible proof.
   `just runtime-app-host-run` launches a runtime-mode Blitz window on the desktop host, and `just runtime-app-host-smoke` exercises the same path with an auto-exit timer.
-- [ ] Click round-trip.
-  Native click -> JS handler -> rerender.
+- [x] Click round-trip.
+  `just runtime-app-click-smoke` keeps the app alive inside one `deno_core` session, dispatches a host click event to `data-shadow-id="counter"`, and verifies the rerendered HTML updates from `Count 1` to `Count 2`.
 - [ ] Basic form / input path.
   Prefer uncontrolled, or `change` / `submit` first.
 - [ ] Rooted Pixel proof.
@@ -57,7 +57,7 @@ Living note. Revise it as we learn. Do not treat this as a fixed contract.
 ## Open Questions
 
 - Is a source-plus-config hash enough once imports start affecting compiled output?
-- Do we keep file-relative bundle wiring for the first app host, or add a custom module-loader alias before Blitz integration?
+- Is one bundled JS file the right embedder artifact for the first app host, or do we eventually want a custom module loader again?
 - Universal renderer vs SSR string renderer for v0?
 - CSS scoping model?
 - Input / focus / caret strategy?

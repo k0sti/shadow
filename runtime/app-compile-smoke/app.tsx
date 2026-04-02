@@ -1,16 +1,20 @@
+import { createSignal } from "@shadow/app-runtime-solid";
+
 type CounterProps = {
-  count: number;
+  initialCount: number;
   title: string;
 };
 
 function Counter(props: CounterProps) {
+  const [count, setCount] = createSignal(props.initialCount);
+
   return (
     <button
       class="primary"
       data-shadow-id="counter"
-      onClick={() => props.count + 1}
+      onClick={() => setCount((value) => value + 1)}
     >
-      {props.title} {props.count}
+      {props.title} {count()}
     </button>
   );
 }
@@ -19,7 +23,7 @@ export function renderApp() {
   return (
     <main class="shell">
       <h1>Shadow Runtime Smoke</h1>
-      <Counter title="Count" count={1} />
+      <Counter title="Count" initialCount={1} />
     </main>
   );
 }

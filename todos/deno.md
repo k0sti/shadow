@@ -24,9 +24,10 @@ Living note. Revise it as we learn. Do not treat this as a fixed contract.
 7. Next: decide whether to stabilize the first GNU envelope or retarget toward a more self-contained payload.
 8. Next: split app-model work into `todos/app-runtime.md`; keep this note on runtime substrate.
 9. Done: load the first compiled Solid-universal app bundle through host `deno_core` and return a document payload from JS back to Rust.
-10. Next: decide whether the first app host keeps file-relative bundle wiring or needs a custom module-loader alias before Blitz integration.
-11. Later: add `deno_runtime` only after the lower seams are stable and the app-runtime lane justifies it.
-12. Later: support the chosen Blitz document bridge from `todos/app-runtime.md`.
+10. Done: bundle the first app-runtime artifact into one local JS module so `deno_core` can stay file-backed while the build step still pulls Solid runtime code from npm.
+11. Next: decide whether that bundled artifact stays the long-term embedder contract or whether we eventually want a custom module loader again.
+12. Later: add `deno_runtime` only after the lower seams are stable and the app-runtime lane justifies it.
+13. Later: support the chosen Blitz document bridge from `todos/app-runtime.md`.
 
 ## Open Questions
 
