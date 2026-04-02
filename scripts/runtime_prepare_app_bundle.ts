@@ -9,6 +9,9 @@ import {
 
 const DEFAULT_CACHE_DIR = "build/runtime/app-document-smoke";
 const DEFAULT_INPUT_PATH = "runtime/app-compile-smoke/app.tsx";
+const OS_MODULE_ALIAS = "@shadow/app-runtime-os";
+const OS_MODULE_NAME = "./shadow_runtime_os.js";
+const OS_SOURCE_PATH = "runtime/app-runtime/shadow_runtime_os.js";
 const RENDERER_MODULE_NAME = "./shadow_runtime_solid.js";
 const RENDERER_SOURCE_PATH = "runtime/app-runtime/shadow_runtime_solid.js";
 
@@ -29,11 +32,14 @@ async function main() {
   };
   const compiled = await compileSolidModule(compileOptions);
   const rendererSourcePath = path.resolve(cwd, RENDERER_SOURCE_PATH);
+  const osSourcePath = path.resolve(cwd, OS_SOURCE_PATH);
   const rendererPath = path.join(compiled.cacheDir, "shadow_runtime_solid.js");
+  const osPath = path.join(compiled.cacheDir, "shadow_runtime_os.js");
   const runnerPath = path.join(compiled.cacheDir, "runner.js");
   const bundlePath = path.join(compiled.cacheDir, "bundle.js");
 
   await Deno.copyFile(rendererSourcePath, rendererPath);
+  await Deno.copyFile(osSourcePath, osPath);
   await rewriteRuntimeAliasImports(compiled.outputPath);
   await Deno.writeTextFile(runnerPath, buildRunnerSource());
   await bundleRunner(runnerPath, bundlePath);
@@ -46,6 +52,7 @@ async function main() {
         cacheHit: compiled.cacheHit,
         inputPath: path.relative(cwd, compiled.inputPath),
         outputPath: path.relative(cwd, compiled.outputPath),
+        osPath: path.relative(cwd, osPath),
         rendererPath: path.relative(cwd, rendererPath),
         runnerPath: path.relative(cwd, runnerPath),
       },
@@ -57,6 +64,7 @@ async function main() {
 
 function buildRunnerSource(): string {
   return `import * as appModule from "./app.js";
+import { createMockNostrOs, installShadowRuntimeOs } from "./shadow_runtime_os.js";
 import { createRuntimeApp } from "./shadow_runtime_solid.js";
 
 const renderApp = appModule.renderApp ?? appModule.default;
@@ -64,6 +72,7 @@ if (typeof renderApp !== "function") {
   throw new TypeError("compiled app module must export renderApp or default");
 }
 
+installShadowRuntimeOs(createMockNostrOs());
 const runtimeApp = createRuntimeApp(renderApp);
 const documentPayload = runtimeApp.renderDocument();
 globalThis.SHADOW_RUNTIME_APP = runtimeApp;
@@ -84,7 +93,9 @@ async function rewriteRuntimeAliasImports(outputPath: string) {
   const output = await Deno.readTextFile(outputPath);
   const rewritten = output
     .replaceAll(`from "${DEFAULT_MODULE_NAME}"`, `from "${RENDERER_MODULE_NAME}"`)
-    .replaceAll(`from '${DEFAULT_MODULE_NAME}'`, `from '${RENDERER_MODULE_NAME}'`);
+    .replaceAll(`from '${DEFAULT_MODULE_NAME}'`, `from '${RENDERER_MODULE_NAME}'`)
+    .replaceAll(`from "${OS_MODULE_ALIAS}"`, `from "${OS_MODULE_NAME}"`)
+    .replaceAll(`from '${OS_MODULE_ALIAS}'`, `from '${OS_MODULE_NAME}'`);
 
   if (rewritten !== output) {
     await Deno.writeTextFile(outputPath, rewritten);

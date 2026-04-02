@@ -151,6 +151,14 @@ runtime-app-selection-smoke backend="deno-core":
 runtime-app-selection-smoke-deno-runtime:
 	@just runtime-app-selection-smoke deno-runtime
 
+# Run the first OS-level Nostr API smoke through the selected bundled app runtime seam
+runtime-app-nostr-smoke backend="deno-core":
+	@SHADOW_RUNTIME_HOST_BACKEND="{{backend}}" nix develop .#runtime -c scripts/runtime_app_nostr_smoke.sh
+
+# Run the first OS-level Nostr API smoke through the bundled app runtime seam on Deno Runtime
+runtime-app-nostr-smoke-deno-runtime:
+	@just runtime-app-nostr-smoke deno-runtime
+
 # Run the fixed-frame Blitz document smoke for app payload swapping
 runtime-app-blitz-document-smoke:
 	@scripts/runtime_app_blitz_document_smoke.sh
@@ -179,12 +187,14 @@ runtime-app-backend-parity-smoke:
 	@just runtime-app-focus-smoke deno-core
 	@just runtime-app-toggle-smoke deno-core
 	@just runtime-app-selection-smoke deno-core
+	@just runtime-app-nostr-smoke deno-core
 	@just runtime-app-document-smoke deno-runtime
 	@just runtime-app-click-smoke deno-runtime
 	@just runtime-app-input-smoke deno-runtime
 	@just runtime-app-focus-smoke deno-runtime
 	@just runtime-app-toggle-smoke deno-runtime
 	@just runtime-app-selection-smoke deno-runtime
+	@just runtime-app-nostr-smoke deno-runtime
 
 # Build the minimal Rusty V8 smoke binary for x86_64 Linux
 runtime-rusty-v8-smoke-x86_64-linux-gnu:
