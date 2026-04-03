@@ -64,7 +64,7 @@ async function main() {
 
 function buildRunnerSource(): string {
   return `import * as appModule from "./app.js";
-import { createMockNostrOs, installShadowRuntimeOs } from "./shadow_runtime_os.js";
+import { ensureShadowRuntimeOs } from "./shadow_runtime_os.js";
 import { createRuntimeApp } from "./shadow_runtime_solid.js";
 
 const renderApp = appModule.renderApp ?? appModule.default;
@@ -72,7 +72,7 @@ if (typeof renderApp !== "function") {
   throw new TypeError("compiled app module must export renderApp or default");
 }
 
-installShadowRuntimeOs(createMockNostrOs());
+ensureShadowRuntimeOs();
 const runtimeApp = createRuntimeApp(renderApp);
 const documentPayload = runtimeApp.renderDocument();
 globalThis.SHADOW_RUNTIME_APP = runtimeApp;

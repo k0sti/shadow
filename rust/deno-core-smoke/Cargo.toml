@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 deno_core = { version = "=0.393.0", default-features = false, features = ["include_icu_data", "reactor-tokio"] }
 deno_error = "=0.7.1"
+runtime-nostr-host = { path = "../runtime-nostr-host" }
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.145"
 tokio = { version = "1.50.0", features = ["rt", "time"] }

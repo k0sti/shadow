@@ -23,7 +23,31 @@ const INITIAL_KIND1_NOTES = [
   },
 ];
 
-export function installShadowRuntimeOs(os) {
+export function ensureShadowRuntimeOs() {
+  if (globalThis.Shadow?.os?.nostr) {
+    return globalThis.Shadow;
+  }
+
+  return installShadowRuntimeOs(createMockNostrOs());
+}
+
+export function listKind1(query = {}) {
+  return getNostrApi().listKind1(query);
+}
+
+export function publishKind1(request) {
+  return getNostrApi().publishKind1(request);
+}
+
+function getNostrApi() {
+  const nostr = globalThis.Shadow?.os?.nostr;
+  if (!nostr) {
+    throw new Error("Shadow.os.nostr is not installed");
+  }
+  return nostr;
+}
+
+function installShadowRuntimeOs(os) {
   globalThis.Shadow = {
     ...(globalThis.Shadow ?? {}),
     os,
@@ -31,7 +55,7 @@ export function installShadowRuntimeOs(os) {
   return globalThis.Shadow;
 }
 
-export function createMockNostrOs() {
+function createMockNostrOs() {
   let events = INITIAL_KIND1_NOTES.map(cloneKind1Event);
   let latestTimestamp = Math.max(...events.map((event) => event.created_at));
   let sequence = events.length;
@@ -65,22 +89,6 @@ export function createMockNostrOs() {
       },
     },
   };
-}
-
-export function listKind1(query = {}) {
-  return getNostrApi().listKind1(query);
-}
-
-export function publishKind1(request) {
-  return getNostrApi().publishKind1(request);
-}
-
-function getNostrApi() {
-  const nostr = globalThis.Shadow?.os?.nostr;
-  if (!nostr) {
-    throw new Error("Shadow.os.nostr is not installed");
-  }
-  return nostr;
 }
 
 function queryKind1Events(events, query) {

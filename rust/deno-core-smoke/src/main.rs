@@ -54,7 +54,10 @@ async fn run() -> Result<()> {
 async fn load_runtime(main_module: &Url) -> Result<JsRuntime> {
     let mut runtime = JsRuntime::new(RuntimeOptions {
         module_loader: Some(Rc::new(FsModuleLoader)),
-        extensions: vec![runtime_smoke_extension::init()],
+        extensions: vec![
+            runtime_smoke_extension::init(),
+            runtime_nostr_host::init_extension(),
+        ],
         ..Default::default()
     });
 

@@ -167,7 +167,9 @@
         cross.rustPlatform.buildRustPackage {
           pname = "deno-core-smoke";
           version = "0.1.0";
-          src = ./rust/deno-core-smoke;
+          src = ./.;
+          cargoRoot = "rust/deno-core-smoke";
+          buildAndTestSubdir = "rust/deno-core-smoke";
           cargoLock.lockFile = ./rust/deno-core-smoke/Cargo.lock;
           doCheck = false;
           strictDeps = true;
@@ -180,7 +182,7 @@
           RUSTY_V8_ARCHIVE = mkRustyV8ArchiveFor cross;
           postInstall = ''
             mkdir -p "$out/lib/deno-core-smoke"
-            cp -r "$src/modules" "$out/lib/deno-core-smoke/"
+            cp -r rust/deno-core-smoke/modules "$out/lib/deno-core-smoke/"
           '';
           meta.mainProgram = "deno-core-smoke";
         };

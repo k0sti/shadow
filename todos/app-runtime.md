@@ -82,6 +82,8 @@ Living note. Revise it as we learn. Do not treat this as a fixed contract.
   The same bundled app/session contract now also runs on `deno_runtime`: `just runtime-app-document-smoke-deno-runtime`, `just runtime-app-click-smoke-deno-runtime`, `just runtime-app-input-smoke-deno-runtime`, and `just runtime-app-host-smoke-deno-runtime` all pass without changing the Blitz-side protocol.
 - [x] Host backend parity smoke.
   `just runtime-app-backend-parity-smoke` now runs the document, click, input, focus, toggle, and selection smokes on both `deno_core` and `deno_runtime` so backend drift is easier to catch.
+- [x] Host OS API seam.
+  `just runtime-app-nostr-smoke` proves a runtime app can call a tiny OS-owned API module (`@shadow/app-runtime-os`) for `listKind1` / `publishKind1` without embedding Nostr logic in the app bundle. The app-facing API stays stable while the default helper backend now hosts the mock service below JS; the alternate backend keeps a temporary fallback until we decide it is worth deeper promotion.
 - [x] Rooted Pixel proof.
   `just pixel-runtime-app-drm` stages the bundled app JS plus the GNU-wrapped `deno-core-smoke` helper, pushes them to the rooted phone, and proves the runtime-mode Blitz demo reaches the real panel through the existing guest compositor DRM path. `just pixel-runtime-app-click-drm` proves the same device path survives one auto-dispatched runtime click.
 - [x] Re-evaluate full snapshots.
