@@ -10,6 +10,9 @@ function installShadowRuntimeOs() {
     publishKind1(request = {}) {
       return core.ops.op_runtime_nostr_publish_kind1(request);
     },
+    async publishEphemeralKind1(request = {}) {
+      return await core.ops.op_runtime_nostr_publish_ephemeral_kind1(request);
+    },
   };
 
   globalThis.Shadow = {

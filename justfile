@@ -163,6 +163,10 @@ runtime-app-nostr-cache-smoke:
 runtime-app-nostr-smoke-deno-runtime:
 	@just runtime-app-nostr-smoke deno-runtime
 
+# Run the GM auto-post runtime app through the default host backend
+runtime-app-nostr-gm-smoke:
+	@nix develop .#runtime -c scripts/runtime_app_nostr_gm_smoke.sh
+
 # Run the fixed-frame Blitz document smoke for app payload swapping
 runtime-app-blitz-document-smoke:
 	@scripts/runtime_app_blitz_document_smoke.sh
@@ -427,6 +431,14 @@ pixel-runtime-app-drm-hold:
 # Run the runtime-mode Blitz demo on the rooted Pixel and auto-dispatch one runtime click
 pixel-runtime-app-click-drm:
 	@scripts/pixel_runtime_app_click_drm.sh
+
+# Run the GM auto-post runtime demo on the rooted Pixel through the guest compositor DRM path
+pixel-runtime-app-nostr-gm-drm:
+	@scripts/pixel_runtime_app_nostr_gm_drm.sh
+
+# Run the GM auto-post runtime demo on the rooted Pixel, keep the panel seized, and leave Android stopped
+pixel-runtime-app-nostr-gm-drm-hold:
+	@scripts/pixel_runtime_app_nostr_gm_drm_hold.sh
 
 # Detect the rooted Pixel touchscreen and capture one raw touch sequence
 pixel-touch-input-smoke:

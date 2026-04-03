@@ -92,8 +92,14 @@ globalThis.RUNTIME_SMOKE_RESULT = JSON.stringify(documentPayload);
 async function rewriteRuntimeAliasImports(outputPath: string) {
   const output = await Deno.readTextFile(outputPath);
   const rewritten = output
-    .replaceAll(`from "${DEFAULT_MODULE_NAME}"`, `from "${RENDERER_MODULE_NAME}"`)
-    .replaceAll(`from '${DEFAULT_MODULE_NAME}'`, `from '${RENDERER_MODULE_NAME}'`)
+    .replaceAll(
+      `from "${DEFAULT_MODULE_NAME}"`,
+      `from "${RENDERER_MODULE_NAME}"`,
+    )
+    .replaceAll(
+      `from '${DEFAULT_MODULE_NAME}'`,
+      `from '${RENDERER_MODULE_NAME}'`,
+    )
     .replaceAll(`from "${OS_MODULE_ALIAS}"`, `from "${OS_MODULE_NAME}"`)
     .replaceAll(`from '${OS_MODULE_ALIAS}'`, `from '${OS_MODULE_NAME}'`);
 

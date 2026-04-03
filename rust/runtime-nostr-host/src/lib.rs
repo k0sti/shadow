@@ -1,3 +1,5 @@
+mod relay_publish;
+
 use std::collections::BTreeSet;
 use std::fs;
 use std::path::Path;
@@ -10,6 +12,9 @@ use deno_error::JsErrorBox;
 use rusqlite::params;
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
+
+use crate::relay_publish::PublishEphemeralKind1Request;
+use crate::relay_publish::PublishedKind1Receipt;
 
 const DEFAULT_PUBLISH_PUBKEY: &str = "npub-shadow-os";
 const NOSTR_DB_PATH_ENV: &str = "SHADOW_RUNTIME_NOSTR_DB_PATH";
@@ -280,6 +285,47 @@ impl SqliteNostrService {
 
         Ok(event)
     }
+
+    fn store_kind1_event(&self, event: &Kind1Event) -> Result<(), String> {
+        let next_sequence: u64 = self
+            .connection
+            .query_row(
+                "SELECT COALESCE(MAX(sequence), 0) + 1 FROM nostr_kind1_events",
+                [],
+                |row| row.get(0),
+            )
+            .map_err(|error| format!("runtime nostr host: load next sqlite sequence: {error}"))?;
+
+        self.connection
+            .execute(
+                "
+                INSERT OR IGNORE INTO nostr_kind1_events (
+                    sequence,
+                    id,
+                    kind,
+                    pubkey,
+                    created_at,
+                    content
+                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+                ",
+                params![
+                    next_sequence,
+                    event.id,
+                    event.kind,
+                    event.pubkey,
+                    event.created_at,
+                    event.content
+                ],
+            )
+            .map_err(|error| {
+                format!(
+                    "runtime nostr host: insert sqlite note {}: {error}",
+                    event.id
+                )
+            })?;
+
+        Ok(())
+    }
 }
 
 #[op2]
@@ -304,6 +350,28 @@ fn op_runtime_nostr_publish_kind1(
         .borrow::<NostrHostState>()
         .service()?
         .publish_kind1(request)
+}
+
+#[op2]
+#[serde]
+async fn op_runtime_nostr_publish_ephemeral_kind1(
+    #[serde] request: PublishEphemeralKind1Request,
+) -> Result<PublishedKind1Receipt, JsErrorBox> {
+    let published = relay_publish::publish_ephemeral_kind1(request)
+        .await
+        .map_err(JsErrorBox::generic)?;
+
+    if let Ok(service) = SqliteNostrService::from_env() {
+        let _ = service.store_kind1_event(&Kind1Event {
+            content: published.content.clone(),
+            created_at: published.created_at,
+            id: published.event_id_hex.clone(),
+            kind: 1,
+            pubkey: published.npub.clone(),
+        });
+    }
+
+    Ok(published)
 }
 
 fn ensure_db_parent_dir(db_path: &str) -> Result<(), String> {
@@ -334,7 +402,11 @@ fn map_kind1_event(row: &rusqlite::Row<'_>) -> rusqlite::Result<Kind1Event> {
 
 extension!(
     runtime_nostr_host_extension,
-    ops = [op_runtime_nostr_list_kind1, op_runtime_nostr_publish_kind1],
+    ops = [
+        op_runtime_nostr_list_kind1,
+        op_runtime_nostr_publish_kind1,
+        op_runtime_nostr_publish_ephemeral_kind1
+    ],
     esm_entry_point = "ext:runtime_nostr_host_extension/bootstrap.js",
     esm = [dir "js", "bootstrap.js"],
     state = |state| {
