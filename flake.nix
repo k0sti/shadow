@@ -175,7 +175,6 @@
           strictDeps = true;
           CARGO_BUILD_TARGET = cross.stdenv.hostPlatform.config;
           nativeBuildInputs = [ cross.buildPackages.pkg-config ];
-          buildInputs = [ cross.sqlite ];
           depsBuildBuild =
             lib.optionals cross.stdenv.buildPlatform.isDarwin [
               cross.buildPackages.stdenv.cc
