@@ -119,6 +119,8 @@ Living note. Revise it as we learn. Do not treat this as a fixed contract.
   `just runtime-app-host-smoke renderer=gpu` and `just runtime-app-host-smoke-gpu` now target the same runtime session/document seam with `anyrender_vello` on host. The same runtime app/session contract auto-clicks and rerenders through the GPU renderer without changing the Blitz-side protocol.
 - [x] Linux compositor / VM GPU proof.
   `just runtime-app-compositor-smoke-gpu` now proves the GPU variant can run as a Wayland client under the existing Smithay compositor smoke. The success condition is launch -> map -> runtime ready -> auto-click dispatch, not a client-side `exit-requested` marker.
+- [x] Guest compositor dmabuf-awareness spike.
+  `shadow-compositor-guest` now advertises a small linux-dmabuf global, logs imported dmabufs, classifies each committed client buffer, and has a dedicated smoke at `just blitz-demo-guest-compositor-smoke-gpu`. Current result: on the headless Linux smoke host, the static GPU Blitz demo still submits `type=shm`, not `type=dma`, so the next unknown is the client/driver path rather than whether Smithay can recognize dmabufs.
 - [x] Rooted-Pixel GPU viability decision.
   Keep the rooted-Pixel runtime lane on CPU for now. Host GPU and Linux compositor GPU both work, which isolates the remaining device blocker to `shadow-compositor-guest`: it still consumes SHM buffers only, so a client-side GPU swap cannot help the Pixel path until the guest compositor grows dmabuf or an equivalent GPU buffer import path.
 
@@ -133,6 +135,7 @@ Living note. Revise it as we learn. Do not treat this as a fixed contract.
 - When to expose sqlite / fs / network ops?
 - When does the device lane need more than `deno_core`, now that the same host contract also works on `deno_runtime`?
 - When do full snapshots stop being acceptable for text entry, scrolling, or animation-heavy apps?
+- Why does the current headless Linux GPU Blitz client still submit SHM buffers under `shadow-compositor-guest` even after the compositor advertises linux-dmabuf?
 
 ## Pivot Signals
 

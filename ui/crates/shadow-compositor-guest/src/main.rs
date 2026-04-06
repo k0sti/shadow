@@ -12,9 +12,14 @@ use std::{
 };
 
 use smithay::{
+    backend::allocator::{dmabuf::Dmabuf, Buffer as AllocatorBuffer, Format, Fourcc, Modifier},
     backend::input::ButtonState,
-    backend::renderer::utils::{on_commit_buffer_handler, with_renderer_surface_state},
-    delegate_compositor, delegate_seat, delegate_shm, delegate_xdg_shell,
+    backend::renderer::{
+        buffer_dimensions,
+        utils::{on_commit_buffer_handler, with_renderer_surface_state},
+        BufferType,
+    },
+    delegate_compositor, delegate_dmabuf, delegate_seat, delegate_shm, delegate_xdg_shell,
     desktop::{Space, Window, WindowSurfaceType},
     input::{
         pointer::{ButtonEvent, MotionEvent},
@@ -35,6 +40,7 @@ use smithay::{
             CompositorClientState, CompositorHandler, CompositorState, SurfaceAttributes,
             TraversalAction,
         },
+        dmabuf::{get_dmabuf, DmabufGlobal, DmabufHandler, DmabufState, ImportNotifier},
         shell::xdg::{ToplevelSurface, XdgShellHandler, XdgShellState, XdgToplevelSurfaceData},
         shm::{with_buffer_contents, ShmHandler, ShmState},
         socket::ListeningSocketSource,
@@ -73,15 +79,19 @@ struct ShadowGuestCompositor {
     compositor_state: CompositorState,
     xdg_shell_state: XdgShellState,
     shm_state: ShmState,
+    dmabuf_state: DmabufState,
+    _dmabuf_global: DmabufGlobal,
     seat_state: SeatState<Self>,
     seat: Seat<Self>,
     launched_clients: Vec<Child>,
     exit_on_first_window: bool,
     exit_on_first_frame: bool,
     exit_on_client_disconnect: bool,
+    exit_on_first_dma_buffer: bool,
     selftest_drm: bool,
     kms_display: Option<kms::KmsDisplay>,
     last_frame_size: Option<(u32, u32)>,
+    last_buffer_signature: Option<String>,
     touch_signal_counter: u64,
     touch_signal_path: Option<PathBuf>,
 }
@@ -92,6 +102,10 @@ impl ShadowGuestCompositor {
         let loop_signal = event_loop.get_signal();
         let exit_on_client_disconnect =
             std::env::var_os("SHADOW_GUEST_COMPOSITOR_EXIT_ON_CLIENT_DISCONNECT").is_some();
+        let dmabuf_formats = Self::supported_dmabuf_formats();
+        let mut dmabuf_state = DmabufState::new();
+        let dmabuf_global =
+            dmabuf_state.create_global::<Self>(&display_handle, dmabuf_formats.clone());
         let transport = Self::init_wayland_transport(
             display,
             event_loop,
@@ -110,6 +124,8 @@ impl ShadowGuestCompositor {
             compositor_state: CompositorState::new::<Self>(&display_handle),
             xdg_shell_state: XdgShellState::new::<Self>(&display_handle),
             shm_state: ShmState::new::<Self>(&display_handle, vec![]),
+            dmabuf_state,
+            _dmabuf_global: dmabuf_global,
             seat_state,
             seat,
             launched_clients: Vec::new(),
@@ -118,14 +134,23 @@ impl ShadowGuestCompositor {
             exit_on_first_frame: std::env::var_os("SHADOW_GUEST_COMPOSITOR_EXIT_ON_FIRST_FRAME")
                 .is_some(),
             exit_on_client_disconnect,
+            exit_on_first_dma_buffer: std::env::var_os(
+                "SHADOW_GUEST_COMPOSITOR_EXIT_ON_FIRST_DMA_BUFFER",
+            )
+            .is_some(),
             selftest_drm: std::env::var_os("SHADOW_GUEST_COMPOSITOR_SELFTEST_DRM").is_some(),
             kms_display: None,
             last_frame_size: None,
+            last_buffer_signature: None,
             touch_signal_counter: 0,
             touch_signal_path: std::env::var_os("SHADOW_GUEST_TOUCH_SIGNAL_PATH")
                 .filter(|value| !value.is_empty())
                 .map(PathBuf::from),
         };
+        tracing::info!(
+            "[shadow-guest-compositor] dmabuf-global-ready formats={}",
+            dmabuf_formats.len()
+        );
         if let Some(path) = state.touch_signal_path.as_ref() {
             tracing::info!(
                 "[shadow-guest-compositor] touch-signal-ready path={}",
@@ -134,6 +159,27 @@ impl ShadowGuestCompositor {
         }
         state.insert_touch_source(event_loop);
         state
+    }
+
+    fn supported_dmabuf_formats() -> Vec<Format> {
+        vec![
+            Format {
+                code: Fourcc::Argb8888,
+                modifier: Modifier::Invalid,
+            },
+            Format {
+                code: Fourcc::Xrgb8888,
+                modifier: Modifier::Invalid,
+            },
+            Format {
+                code: Fourcc::Argb8888,
+                modifier: Modifier::Linear,
+            },
+            Format {
+                code: Fourcc::Xrgb8888,
+                modifier: Modifier::Linear,
+            },
+        ]
     }
 
     fn ensure_kms_display(&mut self) -> Option<&mut kms::KmsDisplay> {
@@ -635,11 +681,69 @@ impl ShadowGuestCompositor {
         with_renderer_surface_state(surface, |state| state.buffer().cloned()).flatten()
     }
 
+    fn observe_surface_buffer(
+        &mut self,
+        buffer: &smithay::backend::renderer::utils::Buffer,
+    ) -> Option<BufferType> {
+        let buffer_type = smithay::backend::renderer::buffer_type(buffer);
+        let signature = match buffer_type {
+            Some(BufferType::Dma) => {
+                let dmabuf = get_dmabuf(buffer).expect("dmabuf-managed buffer");
+                let size = dmabuf.size();
+                let format = dmabuf.format();
+                format!(
+                    "type=dma size={}x{} fourcc={:?} modifier={:?} planes={} y_inverted={}",
+                    size.w,
+                    size.h,
+                    format.code,
+                    format.modifier,
+                    dmabuf.num_planes(),
+                    dmabuf.y_inverted()
+                )
+            }
+            Some(BufferType::Shm) => {
+                let size = buffer_dimensions(buffer)
+                    .map(|size| format!("{}x{}", size.w, size.h))
+                    .unwrap_or_else(|| "unknown".into());
+                format!("type=shm size={size}")
+            }
+            Some(BufferType::SinglePixel) => "type=single-pixel size=1x1".into(),
+            Some(_) => "type=other".into(),
+            None => "type=unknown".into(),
+        };
+
+        if self.last_buffer_signature.as_ref() != Some(&signature) {
+            tracing::info!("[shadow-guest-compositor] buffer-observed {signature}");
+            self.last_buffer_signature = Some(signature);
+        }
+
+        if matches!(buffer_type, Some(BufferType::Dma)) && self.exit_on_first_dma_buffer {
+            tracing::info!("[shadow-guest-compositor] exit-on-first-dma-buffer");
+            self.loop_signal.stop();
+        }
+
+        buffer_type
+    }
+
     fn present_surface(&mut self, surface: &WlSurface) {
         let Some(buffer) = self.take_surface_buffer(surface) else {
             self.send_frame_callbacks(surface);
             return;
         };
+        let observed_type = self.observe_surface_buffer(&buffer);
+        if !matches!(observed_type, Some(BufferType::Shm)) {
+            if matches!(observed_type, Some(BufferType::Dma)) {
+                tracing::warn!("[shadow-guest-compositor] dmabuf-frame-capture-not-supported-yet");
+            } else {
+                tracing::warn!(
+                    "[shadow-guest-compositor] unsupported-frame-buffer type={:?}",
+                    observed_type
+                );
+            }
+            buffer.release();
+            self.send_frame_callbacks(surface);
+            return;
+        }
         let capture_result = with_buffer_contents(&buffer, |ptr, len, data| {
             kms::capture_shm_frame(ptr, len, data)
         });
@@ -800,6 +904,32 @@ impl ShmHandler for ShadowGuestCompositor {
     }
 }
 
+impl DmabufHandler for ShadowGuestCompositor {
+    fn dmabuf_state(&mut self) -> &mut DmabufState {
+        &mut self.dmabuf_state
+    }
+
+    fn dmabuf_imported(
+        &mut self,
+        _global: &DmabufGlobal,
+        dmabuf: Dmabuf,
+        notifier: ImportNotifier,
+    ) {
+        let size = dmabuf.size();
+        let format = dmabuf.format();
+        tracing::info!(
+            "[shadow-guest-compositor] dmabuf-imported size={}x{} fourcc={:?} modifier={:?} planes={} y_inverted={}",
+            size.w,
+            size.h,
+            format.code,
+            format.modifier,
+            dmabuf.num_planes(),
+            dmabuf.y_inverted()
+        );
+        let _ = notifier.successful::<Self>();
+    }
+}
+
 impl XdgShellHandler for ShadowGuestCompositor {
     fn xdg_shell_state(&mut self) -> &mut XdgShellState {
         &mut self.xdg_shell_state
@@ -836,6 +966,7 @@ impl XdgShellHandler for ShadowGuestCompositor {
 }
 
 delegate_compositor!(ShadowGuestCompositor);
+delegate_dmabuf!(ShadowGuestCompositor);
 delegate_seat!(ShadowGuestCompositor);
 delegate_shm!(ShadowGuestCompositor);
 delegate_xdg_shell!(ShadowGuestCompositor);
