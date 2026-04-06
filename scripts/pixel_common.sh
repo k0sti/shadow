@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=./cf_common.sh
-source "$SCRIPT_DIR/cf_common.sh"
+# shellcheck source=./shadow_common.sh
+source "$SCRIPT_DIR/shadow_common.sh"
 
 pixel_dir() {
   printf '%s/pixel\n' "$(build_dir)"
@@ -503,11 +503,11 @@ pixel_runtime_app_bundle_dst() {
 }
 
 pixel_runtime_host_binary_dst() {
-  printf '%s/deno-core-smoke\n' "$(pixel_runtime_linux_dir)"
+  printf '%s/shadow-runtime-host\n' "$(pixel_runtime_linux_dir)"
 }
 
 pixel_runtime_host_launcher_dst() {
-  printf '%s/run-deno-core-smoke\n' "$(pixel_runtime_linux_dir)"
+  printf '%s/run-shadow-runtime-host\n' "$(pixel_runtime_linux_dir)"
 }
 
 pixel_download_dir_device() {

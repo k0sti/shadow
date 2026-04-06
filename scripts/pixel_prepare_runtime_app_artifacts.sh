@@ -14,10 +14,10 @@ input_path="${PIXEL_RUNTIME_APP_INPUT_PATH:-runtime/app-counter/app.tsx}"
 cache_dir="${PIXEL_RUNTIME_APP_CACHE_DIR:-build/runtime/pixel-counter}"
 bundle_artifact="$(pixel_runtime_app_bundle_artifact)"
 host_bundle_dir="$(pixel_runtime_host_bundle_artifact_dir)"
-host_bundle_out_link="$(pixel_dir)/deno-core-smoke-aarch64-linux-gnu-result"
-host_binary_name="deno-core-smoke"
-host_launcher_artifact="$host_bundle_dir/run-deno-core-smoke"
-package_ref="$repo#deno-core-smoke-aarch64-linux-gnu"
+host_bundle_out_link="$(pixel_dir)/shadow-runtime-host-aarch64-linux-gnu-result"
+host_binary_name="shadow-runtime-host"
+host_launcher_artifact="$host_bundle_dir/run-shadow-runtime-host"
+package_ref="$repo#shadow-runtime-host-aarch64-linux-gnu"
 bundle_json=""
 bundle_source_path=""
 
@@ -45,21 +45,19 @@ mkdir -p "$(dirname "$bundle_artifact")"
 cp "$bundle_source_path" "$bundle_artifact"
 chmod 0644 "$bundle_artifact"
 
-stage_deno_core_linux_bundle "$package_ref" "$host_bundle_out_link" "$host_bundle_dir" "$host_binary_name"
+stage_runtime_host_linux_bundle "$package_ref" "$host_bundle_out_link" "$host_bundle_dir" "$host_binary_name"
 
 cat >"$host_launcher_artifact" <<EOF
 #!/system/bin/sh
 DIR=\$(cd "\$(dirname "\$0")" && pwd)
+if [ "\$#" -ne 2 ] || [ "\$1" != "--session" ]; then
+  echo "usage: $host_binary_name --session <bundle-path>" >&2
+  exit 64
+fi
 if command -v chroot >/dev/null 2>&1; then
-  if [ "\$#" -ge 2 ] && [ "\$1" = "--session" ]; then
-    case "\$2" in
-      "\$DIR"/*) set -- "\$1" "/\${2#\$DIR/}" ;;
-    esac
-  elif [ "\$#" -ge 1 ]; then
-    case "\$1" in
-      "\$DIR"/*) set -- "/\${1#\$DIR/}" ;;
-    esac
-  fi
+  case "\$2" in
+    "\$DIR"/*) set -- "\$1" "/\${2#\$DIR/}" ;;
+  esac
   exec chroot "\$DIR" "/lib/$PIXEL_RUNTIME_STAGE_LOADER_NAME" --library-path /lib "/$host_binary_name" "\$@"
 fi
 exec "\$DIR/lib/$PIXEL_RUNTIME_STAGE_LOADER_NAME" --library-path "\$DIR/lib" "\$DIR/$host_binary_name" "\$@"
@@ -77,7 +75,7 @@ print(json.dumps({
     "runtimeAppBundleArtifact": os.path.abspath(bundle_artifact),
     "runtimeAppBundleDevicePath": "/data/local/tmp/shadow-runtime-gnu/runtime-app-bundle.js",
     "runtimeHostBundleArtifactDir": os.path.abspath(host_bundle_dir),
-    "runtimeHostBinaryDevicePath": "/data/local/tmp/shadow-runtime-gnu/deno-core-smoke",
-    "runtimeHostLauncherDevicePath": "/data/local/tmp/shadow-runtime-gnu/run-deno-core-smoke",
+    "runtimeHostBinaryDevicePath": "/data/local/tmp/shadow-runtime-gnu/shadow-runtime-host",
+    "runtimeHostLauncherDevicePath": "/data/local/tmp/shadow-runtime-gnu/run-shadow-runtime-host",
 }, indent=2))
 PY

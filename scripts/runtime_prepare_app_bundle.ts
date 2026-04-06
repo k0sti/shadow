@@ -89,7 +89,6 @@ globalThis.SHADOW_RUNTIME_HOST = {
   },
 };
 globalThis.RUNTIME_APP_DOCUMENT = documentPayload;
-globalThis.RUNTIME_SMOKE_RESULT = JSON.stringify(documentPayload);
 `;
 }
 

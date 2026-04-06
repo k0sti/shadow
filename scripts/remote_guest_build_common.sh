@@ -1,21 +1,21 @@
 #!/usr/bin/env bash
 
-REMOTE_GUEST_UI_DIR_CACHE="${REMOTE_GUEST_UI_DIR_CACHE:-}"
-GUEST_UI_NAMESPACE="${SHADOW_GUEST_UI_NAMESPACE:-$(worktree_basename)-$$}"
+REMOTE_GUEST_BUILD_DIR_CACHE="${REMOTE_GUEST_BUILD_DIR_CACHE:-${REMOTE_GUEST_UI_DIR_CACHE:-}}"
+GUEST_BUILD_NAMESPACE="${SHADOW_GUEST_BUILD_NAMESPACE:-${SHADOW_GUEST_UI_NAMESPACE:-$(worktree_basename)-$$}}"
 
-remote_guest_ui_dir() {
-  if [[ -n "${REMOTE_GUEST_UI_DIR_CACHE:-}" ]]; then
-    printf '%s\n' "$REMOTE_GUEST_UI_DIR_CACHE"
+remote_guest_build_dir() {
+  if [[ -n "${REMOTE_GUEST_BUILD_DIR_CACHE:-}" ]]; then
+    printf '%s\n' "$REMOTE_GUEST_BUILD_DIR_CACHE"
     return
   fi
 
-  REMOTE_GUEST_UI_DIR_CACHE="$(remote_home)/.cache/shadow-guest-ui-${GUEST_UI_NAMESPACE}"
-  printf '%s\n' "$REMOTE_GUEST_UI_DIR_CACHE"
+  REMOTE_GUEST_BUILD_DIR_CACHE="$(remote_home)/.cache/shadow-guest-build-${GUEST_BUILD_NAMESPACE}"
+  printf '%s\n' "$REMOTE_GUEST_BUILD_DIR_CACHE"
 }
 
-sync_remote_guest_ui_tree() {
+sync_remote_guest_build_tree() {
   local remote_dir root
-  remote_dir="$(remote_guest_ui_dir)"
+  remote_dir="$(remote_guest_build_dir)"
   root="$(repo_root)"
 
   if is_local_host; then

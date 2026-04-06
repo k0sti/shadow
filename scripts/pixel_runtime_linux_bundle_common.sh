@@ -48,16 +48,16 @@ find_runtime_file_in_closure() {
   return 1
 }
 
-stage_deno_core_linux_bundle() {
+stage_runtime_host_linux_bundle() {
   local package_ref out_link bundle_dir binary_name
-  local binary_host_path modules_host_dir bundle_lib_dir bundle_etc_dir file_output
+  local binary_host_path bundle_lib_dir bundle_etc_dir file_output
   local interpreter_path loader_name needed_lib lib_source_path
   local dns_server
 
   package_ref="$1"
   out_link="$2"
   bundle_dir="$3"
-  binary_name="${4:-deno-core-smoke}"
+  binary_name="${4:-shadow-runtime-host}"
   bundle_lib_dir="$bundle_dir/lib"
   bundle_etc_dir="$bundle_dir/etc"
 
@@ -70,8 +70,6 @@ stage_deno_core_linux_bundle() {
   nix build --accept-flake-config "$package_ref" --out-link "$out_link"
 
   binary_host_path="$out_link/bin/$binary_name"
-  modules_host_dir="$out_link/lib/$binary_name/modules"
-
   file_output="$(file "$binary_host_path")"
   printf '%s\n' "$file_output"
   if [[ "$file_output" != *"ARM aarch64"* || "$file_output" != *"dynamically linked"* ]]; then
@@ -89,9 +87,6 @@ stage_deno_core_linux_bundle() {
   loader_name="$(basename "$interpreter_path")"
 
   cp "$binary_host_path" "$bundle_dir/$binary_name"
-  if [[ -d "$modules_host_dir" ]]; then
-    cp -r "$modules_host_dir" "$bundle_dir/modules"
-  fi
   cp "$interpreter_path" "$bundle_lib_dir/$loader_name"
 
   while IFS= read -r needed_lib; do

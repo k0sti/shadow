@@ -417,19 +417,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "deno-core-smoke"
-version = "0.1.0"
-dependencies = [
- "deno_core",
- "deno_error",
- "runtime-nostr-host",
- "serde",
- "serde_json",
- "tokio",
- "v8",
-]
-
-[[package]]
 name = "deno_core"
 version = "0.393.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1863,6 +1850,18 @@ dependencies = [
  "cfg-if",
  "cpufeatures",
  "digest",
+]
+
+[[package]]
+name = "shadow-runtime-host"
+version = "0.1.0"
+dependencies = [
+ "deno_core",
+ "runtime-nostr-host",
+ "serde",
+ "serde_json",
+ "tokio",
+ "v8",
 ]
 
 [[package]]

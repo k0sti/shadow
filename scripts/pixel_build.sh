@@ -4,8 +4,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=./pixel_common.sh
 source "$SCRIPT_DIR/pixel_common.sh"
-# shellcheck source=./guest_ui_common.sh
-source "$SCRIPT_DIR/guest_ui_common.sh"
+# shellcheck source=./remote_guest_build_common.sh
+source "$SCRIPT_DIR/remote_guest_build_common.sh"
 ensure_bootimg_shell "$@"
 
 build_one() {
@@ -105,9 +105,9 @@ else
       continue
     fi
 
-    echo "pixel_build: falling back to remote guest UI repo sync for $binary_name" >&2
+    echo "pixel_build: falling back to remote guest build repo sync for $binary_name" >&2
     if [[ -z "$remote_repo" ]]; then
-      remote_repo="$(sync_remote_guest_ui_tree)"
+      remote_repo="$(sync_remote_guest_build_tree)"
     fi
     copy_remote_binary "$remote_repo" "$attr" "$binary_name"
   done

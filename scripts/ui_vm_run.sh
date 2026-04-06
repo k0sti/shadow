@@ -13,10 +13,10 @@ runtime_env_tmp=""
 
 case "$(uname -m)" in
   arm64|aarch64)
-    ui_vm_runtime_host_package_attr_default="deno-core-smoke-aarch64-linux-gnu"
+    ui_vm_runtime_host_package_attr_default="shadow-runtime-host-aarch64-linux-gnu"
     ;;
   x86_64)
-    ui_vm_runtime_host_package_attr_default="deno-core-smoke-x86_64-linux-gnu"
+    ui_vm_runtime_host_package_attr_default="shadow-runtime-host-x86_64-linux-gnu"
     ;;
   *)
     echo "ui-vm-run: unsupported host arch $(uname -m) for runtime host package selection" >&2
@@ -47,7 +47,7 @@ if [[ ! -s "$RUNTIME_ENV_PATH" || -n "${SHADOW_UI_VM_REFRESH_RUNTIME_ENV:-}" ]];
   SHADOW_RUNTIME_APP_BUNDLE_REWRITE_FROM="$REPO_ROOT" \
   SHADOW_RUNTIME_APP_BUNDLE_REWRITE_TO="/work/shadow" \
   SHADOW_RUNTIME_HOST_PACKAGE_ATTR_OVERRIDE="${SHADOW_UI_VM_RUNTIME_HOST_PACKAGE_ATTR:-$ui_vm_runtime_host_package_attr_default}" \
-  SHADOW_RUNTIME_HOST_BINARY_NAME_OVERRIDE="${SHADOW_UI_VM_RUNTIME_HOST_BINARY_NAME:-deno-core-smoke}" \
+  SHADOW_RUNTIME_HOST_BINARY_NAME_OVERRIDE="${SHADOW_UI_VM_RUNTIME_HOST_BINARY_NAME:-shadow-runtime-host}" \
     ./scripts/runtime_prepare_host_session_env.sh >"$runtime_env_tmp"
   mv "$runtime_env_tmp" "$RUNTIME_ENV_PATH"
   runtime_env_tmp=""

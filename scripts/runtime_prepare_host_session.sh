@@ -8,8 +8,8 @@ CACHE_DIR="${SHADOW_RUNTIME_APP_CACHE_DIR:-build/runtime/app-counter-host}"
 REPO_FLAKE_REF="${SHADOW_RUNTIME_FLAKE_REF:-${REPO_ROOT}}"
 
 cd "$REPO_ROOT"
-runtime_host_package_attr="${SHADOW_RUNTIME_HOST_PACKAGE_ATTR_OVERRIDE:-deno-core-smoke}"
-runtime_host_binary_name="${SHADOW_RUNTIME_HOST_BINARY_NAME_OVERRIDE:-deno-core-smoke}"
+runtime_host_package_attr="${SHADOW_RUNTIME_HOST_PACKAGE_ATTR_OVERRIDE:-shadow-runtime-host}"
+runtime_host_binary_name="${SHADOW_RUNTIME_HOST_BINARY_NAME_OVERRIDE:-shadow-runtime-host}"
 
 bundle_json="$(
   nix develop --accept-flake-config "${REPO_FLAKE_REF}#runtime" -c deno run --quiet \

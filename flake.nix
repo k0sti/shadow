@@ -101,14 +101,14 @@
           nativeBuildInputs = [ cross.buildPackages.pkg-config ];
           buildInputs = lib.optionals cross.stdenv.hostPlatform.isLinux [ staticXkbcommon ];
         };
-      mkDenoCoreSmokeFor = cross:
+      mkShadowRuntimeHostFor = cross:
         cross.rustPlatform.buildRustPackage {
-          pname = "deno-core-smoke";
+          pname = "shadow-runtime-host";
           version = "0.1.0";
           src = ./.;
-          cargoRoot = "rust/deno-core-smoke";
-          buildAndTestSubdir = "rust/deno-core-smoke";
-          cargoLock.lockFile = ./rust/deno-core-smoke/Cargo.lock;
+          cargoRoot = "rust/shadow-runtime-host";
+          buildAndTestSubdir = "rust/shadow-runtime-host";
+          cargoLock.lockFile = ./rust/shadow-runtime-host/Cargo.lock;
           doCheck = false;
           strictDeps = true;
           CARGO_BUILD_TARGET = cross.stdenv.hostPlatform.config;
@@ -119,11 +119,7 @@
               cross.buildPackages.libiconv
             ];
           RUSTY_V8_ARCHIVE = mkRustyV8ArchiveFor cross;
-          postInstall = ''
-            mkdir -p "$out/lib/deno-core-smoke"
-            cp -r rust/deno-core-smoke/modules "$out/lib/deno-core-smoke/"
-          '';
-          meta.mainProgram = "deno-core-smoke";
+          meta.mainProgram = "shadow-runtime-host";
         };
       mkShadowSession = pkgs: mkShadowSessionFor pkgs.pkgsCross.musl64;
       mkShadowGuestCompositor = pkgs: mkShadowGuestCompositorFor pkgs.pkgsStatic;
@@ -260,11 +256,11 @@
       });
       packages = forAllSystems ({ pkgs }:
         {
-          deno-core-smoke = mkDenoCoreSmokeFor pkgs;
-          deno-core-smoke-aarch64-linux-gnu =
-            mkDenoCoreSmokeFor pkgs.pkgsCross.aarch64-multiplatform;
-          deno-core-smoke-x86_64-linux-gnu =
-            mkDenoCoreSmokeFor pkgs.pkgsCross.gnu64;
+          shadow-runtime-host = mkShadowRuntimeHostFor pkgs;
+          shadow-runtime-host-aarch64-linux-gnu =
+            mkShadowRuntimeHostFor pkgs.pkgsCross.aarch64-multiplatform;
+          shadow-runtime-host-x86_64-linux-gnu =
+            mkShadowRuntimeHostFor pkgs.pkgsCross.gnu64;
           shadow-session = mkShadowSession pkgs;
           shadow-session-device = mkShadowSessionFor pkgs.pkgsCross.aarch64-multiplatform-musl;
           default = mkShadowSession pkgs;
