@@ -50,6 +50,18 @@ stage_deno_core_linux_bundle "$package_ref" "$host_bundle_out_link" "$host_bundl
 cat >"$host_launcher_artifact" <<EOF
 #!/system/bin/sh
 DIR=\$(cd "\$(dirname "\$0")" && pwd)
+if command -v chroot >/dev/null 2>&1; then
+  if [ "\$#" -ge 2 ] && [ "\$1" = "--session" ]; then
+    case "\$2" in
+      "\$DIR"/*) set -- "\$1" "/\${2#\$DIR/}" ;;
+    esac
+  elif [ "\$#" -ge 1 ]; then
+    case "\$1" in
+      "\$DIR"/*) set -- "/\${1#\$DIR/}" ;;
+    esac
+  fi
+  exec chroot "\$DIR" "/lib/$PIXEL_RUNTIME_STAGE_LOADER_NAME" --library-path /lib "/$host_binary_name" "\$@"
+fi
 exec "\$DIR/lib/$PIXEL_RUNTIME_STAGE_LOADER_NAME" --library-path "\$DIR/lib" "\$DIR/$host_binary_name" "\$@"
 EOF
 chmod 0755 "$host_launcher_artifact"

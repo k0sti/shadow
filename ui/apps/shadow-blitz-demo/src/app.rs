@@ -394,7 +394,6 @@ fn window_attributes(demo_mode: DemoMode) -> WindowAttributes {
     attributes
 }
 
-fn document_should_exit(demo_mode: DemoMode, window: &mut View<WindowRenderer>) -> bool {
 fn surface_size_from_env() -> (u32, u32) {
     (
         surface_dimension_from_env("SHADOW_BLITZ_SURFACE_WIDTH", DEFAULT_SURFACE_WIDTH),
@@ -409,6 +408,7 @@ fn surface_dimension_from_env(key: &str, default: u32) -> u32 {
         .filter(|value| *value > 0)
         .unwrap_or(default)
 }
+
 fn document_should_exit(demo_mode: DemoMode, window: &mut View<WindowRenderer>) -> bool {
     match demo_mode {
         DemoMode::Static => window.downcast_doc_mut::<StaticDocument>().should_exit(),

@@ -36,18 +36,18 @@
         lib.genAttrs systems (system:
           f { pkgs = import nixpkgs { inherit system; }; });
       uiBlitzOutputHashes = {
-        "blitz-dom-0.2.2" = "sha256-12kCCerl+ZhcEyGHOYQ0Rez1U+WY/KRFISVYu6PTrXY=";
-        "blitz-html-0.2.0" = "sha256-12kCCerl+ZhcEyGHOYQ0Rez1U+WY/KRFISVYu6PTrXY=";
-        "blitz-paint-0.2.1" = "sha256-12kCCerl+ZhcEyGHOYQ0Rez1U+WY/KRFISVYu6PTrXY=";
-        "blitz-shell-0.2.2" = "sha256-12kCCerl+ZhcEyGHOYQ0Rez1U+WY/KRFISVYu6PTrXY=";
-        "blitz-traits-0.2.0" = "sha256-12kCCerl+ZhcEyGHOYQ0Rez1U+WY/KRFISVYu6PTrXY=";
-        "debug_timer-0.1.3" = "sha256-12kCCerl+ZhcEyGHOYQ0Rez1U+WY/KRFISVYu6PTrXY=";
-        "fontique-0.7.0" = "sha256-F5+3iH+5seYqG0MDK2FjP8N5DTIfAXFuG8hOaP9JqDY=";
-        "parley-0.7.0" = "sha256-F5+3iH+5seYqG0MDK2FjP8N5DTIfAXFuG8hOaP9JqDY=";
-        "parley_data-0.0.0" = "sha256-F5+3iH+5seYqG0MDK2FjP8N5DTIfAXFuG8hOaP9JqDY=";
-        "stylo_taffy-0.2.0" = "sha256-12kCCerl+ZhcEyGHOYQ0Rez1U+WY/KRFISVYu6PTrXY=";
-        "taffy-0.9.2" = "sha256-ySHniRTk6gOvZ4Kdb5oY7ihBzmKFbWBpeRiS9MXeeZM=";
-        "text_primitives-0.1.0" = "sha256-F5+3iH+5seYqG0MDK2FjP8N5DTIfAXFuG8hOaP9JqDY=";
+        "blitz-dom-0.2.2" = "sha256-RWQ5RpapA5ZmxJ9+LuUlL+RTwBcHRgZDM7Kok6yHpi8=";
+        "blitz-html-0.2.0" = "sha256-RWQ5RpapA5ZmxJ9+LuUlL+RTwBcHRgZDM7Kok6yHpi8=";
+        "blitz-paint-0.2.1" = "sha256-RWQ5RpapA5ZmxJ9+LuUlL+RTwBcHRgZDM7Kok6yHpi8=";
+        "blitz-shell-0.2.2" = "sha256-RWQ5RpapA5ZmxJ9+LuUlL+RTwBcHRgZDM7Kok6yHpi8=";
+        "blitz-traits-0.2.0" = "sha256-RWQ5RpapA5ZmxJ9+LuUlL+RTwBcHRgZDM7Kok6yHpi8=";
+        "debug_timer-0.1.3" = "sha256-RWQ5RpapA5ZmxJ9+LuUlL+RTwBcHRgZDM7Kok6yHpi8=";
+        "fontique-0.8.0" = "sha256-dhczFDIFbcl2mMUtTIZaeaTtXWTHNw1fl2xgVcp93NE=";
+        "parlance-0.1.0" = "sha256-dhczFDIFbcl2mMUtTIZaeaTtXWTHNw1fl2xgVcp93NE=";
+        "parley-0.8.0" = "sha256-dhczFDIFbcl2mMUtTIZaeaTtXWTHNw1fl2xgVcp93NE=";
+        "parley_data-0.8.0" = "sha256-dhczFDIFbcl2mMUtTIZaeaTtXWTHNw1fl2xgVcp93NE=";
+        "stylo_taffy-0.2.0" = "sha256-RWQ5RpapA5ZmxJ9+LuUlL+RTwBcHRgZDM7Kok6yHpi8=";
+        "taffy-0.9.2" = "sha256-PrLnNpo6pjChOKUzc1KgN7uxxAbGhY4tFffVMf2ZXbc=";
       };
       rustyV8ReleaseVersion = "146.8.0";
       rustyV8ReleaseShas = {
