@@ -29,6 +29,7 @@ export {
 } from "npm:solid-js@1.9.10/dist/solid.js";
 
 const ROOT_TAG = "shadow-root";
+let activeRuntimeInvalidator = null;
 const VOID_ELEMENTS = new Set([
   "area",
   "base",
@@ -84,17 +85,38 @@ export function createRuntimeApp(renderApp, options = {}) {
   const mount = hostCreateElement(ROOT_TAG);
   const dispose = render(() => renderApp(), mount);
   const css = typeof options.css === "string" ? options.css : null;
+  let dirty = false;
+  const invalidate = () => {
+    dirty = true;
+  };
+  activeRuntimeInvalidator = invalidate;
 
   return {
-    async dispatch(event) {
-      await dispatchRuntimeEvent(mount, event);
+    dispatch(event) {
+      dispatchRuntimeEvent(mount, event);
       return renderMountToDocument(mount, css);
     },
-    dispose,
+    dispose() {
+      if (activeRuntimeInvalidator === invalidate) {
+        activeRuntimeInvalidator = null;
+      }
+      dispose();
+    },
+    renderIfDirty() {
+      if (!dirty) {
+        return null;
+      }
+      dirty = false;
+      return renderMountToDocument(mount, css);
+    },
     renderDocument() {
       return renderMountToDocument(mount, css);
     },
   };
+}
+
+export function invalidateRuntimeApp() {
+  activeRuntimeInvalidator?.();
 }
 
 export function renderToDocument(root, options = {}) {
@@ -233,7 +255,7 @@ function isTextNode(node) {
   return node?.kind === "text";
 }
 
-async function dispatchRuntimeEvent(root, event) {
+function dispatchRuntimeEvent(root, event) {
   const normalizedEvent = normalizeRuntimeEvent(event);
   const targetNode = findNodeByShadowId(root, normalizedEvent.targetId);
   if (!targetNode) {
@@ -245,7 +267,9 @@ async function dispatchRuntimeEvent(root, event) {
   if (typeof handler === "function") {
     const handlerResult = handler(createRuntimeEvent(targetNode, normalizedEvent));
     if (handlerResult != null && typeof handlerResult.then === "function") {
-      await handlerResult;
+      void handlerResult.catch((error) => {
+        console.error("runtime event handler rejected", error);
+      });
     }
   }
 }
@@ -275,6 +299,10 @@ function normalizeRuntimeEvent(event) {
   const pointer = normalizeRuntimePointer(event.pointer);
   if (pointer) {
     normalizedEvent.pointer = pointer;
+  }
+  const keyboard = normalizeRuntimeKeyboard(event.keyboard);
+  if (keyboard) {
+    normalizedEvent.keyboard = keyboard;
   }
   return normalizedEvent;
 }
@@ -352,6 +380,41 @@ function normalizeRuntimePointer(pointer) {
   return Object.keys(normalizedPointer).length === 0 ? null : normalizedPointer;
 }
 
+function normalizeRuntimeKeyboard(keyboard) {
+  if (keyboard == null) {
+    return null;
+  }
+  if (typeof keyboard !== "object") {
+    throw new TypeError("runtime event keyboard must be an object");
+  }
+
+  const normalizedKeyboard = {};
+  if ("key" in keyboard) {
+    if (typeof keyboard.key !== "string") {
+      throw new TypeError("runtime event keyboard key must be a string");
+    }
+    normalizedKeyboard.key = keyboard.key;
+  }
+  if ("code" in keyboard) {
+    if (typeof keyboard.code !== "string") {
+      throw new TypeError("runtime event keyboard code must be a string");
+    }
+    normalizedKeyboard.code = keyboard.code;
+  }
+  for (const field of ["altKey", "ctrlKey", "metaKey", "shiftKey"]) {
+    if (field in keyboard) {
+      if (typeof keyboard[field] !== "boolean") {
+        throw new TypeError(`runtime event keyboard ${field} must be a boolean`);
+      }
+      normalizedKeyboard[field] = keyboard[field];
+    }
+  }
+
+  return Object.keys(normalizedKeyboard).length === 0
+    ? null
+    : normalizedKeyboard;
+}
+
 function findNodeByShadowId(node, targetId) {
   if (!node || node.kind !== "element") {
     return null;
@@ -427,6 +490,13 @@ function createRuntimeEvent(targetNode, event) {
     clientX: event.pointer?.clientX ?? 0,
     clientY: event.pointer?.clientY ?? 0,
     isPrimary: event.pointer?.isPrimary ?? false,
+    keyboard: event.keyboard ?? null,
+    key: event.keyboard?.key ?? "",
+    code: event.keyboard?.code ?? "",
+    altKey: event.keyboard?.altKey ?? false,
+    ctrlKey: event.keyboard?.ctrlKey ?? false,
+    metaKey: event.keyboard?.metaKey ?? false,
+    shiftKey: event.keyboard?.shiftKey ?? false,
   };
 }
 

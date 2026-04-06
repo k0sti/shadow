@@ -34,14 +34,34 @@ impl RuntimeSession {
     }
 
     pub fn render_document(&mut self) -> Result<RuntimeDocumentPayload, String> {
-        self.send_request(&SessionRequest::Render)
+        match self.send_request(&SessionRequest::Render)? {
+            SessionResponse::Ok { payload } => Ok(payload),
+            SessionResponse::NoUpdate => {
+                Err(String::from("runtime host returned no update for render"))
+            }
+            SessionResponse::Error { message } => Err(message),
+        }
+    }
+
+    pub fn render_if_dirty(&mut self) -> Result<Option<RuntimeDocumentPayload>, String> {
+        match self.send_request(&SessionRequest::RenderIfDirty)? {
+            SessionResponse::Ok { payload } => Ok(Some(payload)),
+            SessionResponse::NoUpdate => Ok(None),
+            SessionResponse::Error { message } => Err(message),
+        }
     }
 
     pub fn dispatch(
         &mut self,
         event: RuntimeDispatchEvent,
     ) -> Result<RuntimeDocumentPayload, String> {
-        self.send_request(&SessionRequest::Dispatch { event })
+        match self.send_request(&SessionRequest::Dispatch { event })? {
+            SessionResponse::Ok { payload } => Ok(payload),
+            SessionResponse::NoUpdate => {
+                Err(String::from("runtime host returned no update for dispatch"))
+            }
+            SessionResponse::Error { message } => Err(message),
+        }
     }
 
     fn spawn(host_binary_path: String, bundle_path: String) -> Result<Self, String> {
@@ -75,7 +95,7 @@ impl RuntimeSession {
         })
     }
 
-    fn send_request(&mut self, request: &SessionRequest) -> Result<RuntimeDocumentPayload, String> {
+    fn send_request(&mut self, request: &SessionRequest) -> Result<SessionResponse, String> {
         let started = Instant::now();
         let encoded =
             serde_json::to_string(request).map_err(|error| format!("encode request: {error}"))?;
@@ -98,17 +118,15 @@ impl RuntimeSession {
             started.elapsed().as_millis()
         ));
 
-        match serde_json::from_str::<SessionResponse>(line.trim_end()) {
-            Ok(SessionResponse::Ok { payload }) => Ok(payload),
-            Ok(SessionResponse::Error { message }) => Err(message),
-            Err(error) => Err(format!("decode response: {error}")),
-        }
+        serde_json::from_str::<SessionResponse>(line.trim_end())
+            .map_err(|error| format!("decode response: {error}"))
     }
 }
 
 fn session_request_name(request: &SessionRequest) -> &'static str {
     match request {
         SessionRequest::Render => "render",
+        SessionRequest::RenderIfDirty => "render_if_dirty",
         SessionRequest::Dispatch { .. } => "dispatch",
     }
 }
@@ -136,6 +154,8 @@ pub struct RuntimeDispatchEvent {
     pub selection: Option<RuntimeSelectionEvent>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pointer: Option<RuntimePointerEvent>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub keyboard: Option<RuntimeKeyboardEvent>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -158,10 +178,27 @@ pub struct RuntimePointerEvent {
     pub is_primary: Option<bool>,
 }
 
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct RuntimeKeyboardEvent {
+    #[serde(rename = "key", skip_serializing_if = "Option::is_none")]
+    pub key: Option<String>,
+    #[serde(rename = "code", skip_serializing_if = "Option::is_none")]
+    pub code: Option<String>,
+    #[serde(rename = "altKey", skip_serializing_if = "Option::is_none")]
+    pub alt_key: Option<bool>,
+    #[serde(rename = "ctrlKey", skip_serializing_if = "Option::is_none")]
+    pub ctrl_key: Option<bool>,
+    #[serde(rename = "metaKey", skip_serializing_if = "Option::is_none")]
+    pub meta_key: Option<bool>,
+    #[serde(rename = "shiftKey", skip_serializing_if = "Option::is_none")]
+    pub shift_key: Option<bool>,
+}
+
 #[derive(Debug, Serialize)]
 #[serde(tag = "op", rename_all = "snake_case")]
 enum SessionRequest {
     Render,
+    RenderIfDirty,
     Dispatch { event: RuntimeDispatchEvent },
 }
 
@@ -169,5 +206,6 @@ enum SessionRequest {
 #[serde(tag = "status", rename_all = "snake_case")]
 enum SessionResponse {
     Ok { payload: RuntimeDocumentPayload },
+    NoUpdate,
     Error { message: String },
 }

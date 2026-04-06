@@ -113,6 +113,12 @@ runtime-app-nostr-gm-smoke:
 	SHADOW_RUNTIME_APP_CACHE_DIR=build/runtime/app-nostr-gm \
 	scripts/runtime_app_nostr_gm_smoke.sh
 
+# Run the English keyboard runtime smoke under the current host runtime backend
+runtime-app-keyboard-smoke:
+	@SHADOW_RUNTIME_APP_INPUT_PATH=runtime/app-keyboard-smoke/app.tsx \
+	SHADOW_RUNTIME_APP_CACHE_DIR=build/runtime/app-keyboard-smoke \
+	scripts/runtime_app_keyboard_smoke.sh
+
 # Restore the Android display stack after a hold-mode rooted takeover run
 pixel-restore-android:
 	@scripts/pixel_restore_android.sh

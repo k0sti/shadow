@@ -43,6 +43,7 @@ Living note. Revise it as we learn. Do not treat this as a fixed contract.
 - Boolean form events may also include `checked`.
 - Text-like events may also include `selection: { start?, end?, direction? }`.
 - Pointer-derived events may also include `pointer: { clientX?, clientY?, isPrimary? }`.
+- Keyboard-derived events may also include `keyboard: { key?, code?, altKey?, ctrlKey?, metaKey?, shiftKey? }`.
 - JS handlers receive:
   - `event.type`
   - `event.targetId`
@@ -50,6 +51,7 @@ Living note. Revise it as we learn. Do not treat this as a fixed contract.
   - `event.checked` plus `event.currentTarget.checked`
   - `event.selection`, `event.selectionStart`, `event.selectionEnd`, `event.selectionDirection`
   - `event.pointer`, `event.clientX`, `event.clientY`, `event.isPrimary`
+  - `event.keyboard`, `event.key`, `event.code`, `event.altKey`, `event.ctrlKey`, `event.metaKey`, `event.shiftKey`
   - `event.target` / `event.currentTarget`
 - Current transport examples:
   - click: `{ "type": "click", "targetId": "counter" }`
@@ -57,6 +59,7 @@ Living note. Revise it as we learn. Do not treat this as a fixed contract.
   - checkbox change: `{ "type": "change", "targetId": "alerts", "checked": true }`
   - text selection: `{ "type": "input", "targetId": "draft", "selection": { "start": 6, "end": 11, "direction": "forward" } }`
   - future pointer click: `{ "type": "click", "targetId": "counter", "pointer": { "clientX": 120.0, "clientY": 280.0, "isPrimary": true } }`
+  - keydown: `{ "type": "keydown", "targetId": "draft", "keyboard": { "key": "G", "code": "KeyG", "shiftKey": true } }`
 
 ## MVP Ladder
 
@@ -86,6 +89,8 @@ Living note. Revise it as we learn. Do not treat this as a fixed contract.
   `just runtime-app-nostr-smoke` proves a runtime app can call a tiny OS-owned API module (`@shadow/app-runtime-os`) for `listKind1` / `publishKind1` without embedding Nostr logic in the app bundle. The app-facing API stays stable while the default helper backend now hosts the mock service below JS; the alternate backend keeps a temporary fallback until we decide it is worth deeper promotion.
 - [x] Default-backend Nostr cache seam.
   `just runtime-app-nostr-cache-smoke` now gives the default `deno_core` helper a sqlite-backed mock Nostr store, proves a published note survives a fresh helper process, and verifies author-filtered feed queries without changing the app-facing OS API.
+- [x] English keyboard host smoke.
+  `just runtime-app-keyboard-smoke` now proves the current runtime contract can carry focus, keydown metadata, plain text input, and selection updates for an English text field without claiming IME support.
 - [x] Rooted Pixel proof.
   `just pixel-runtime-app-drm` stages the bundled app JS plus the GNU-wrapped `deno-core-smoke` helper, pushes them to the rooted phone, and proves the runtime-mode Blitz demo reaches the real panel through the existing guest compositor DRM path. `just pixel-runtime-app-click-drm` proves the same device path survives one auto-dispatched runtime click.
 - [x] Re-evaluate full snapshots.

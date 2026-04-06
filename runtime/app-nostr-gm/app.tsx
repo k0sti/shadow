@@ -1,4 +1,9 @@
-import { For, Show, createSignal } from "@shadow/app-runtime-solid";
+import {
+  For,
+  Show,
+  createSignal,
+  invalidateRuntimeApp,
+} from "@shadow/app-runtime-solid";
 import { publishEphemeralKind1 } from "@shadow/app-runtime-os";
 
 const GM_CONTENT = "GM";
@@ -156,6 +161,41 @@ body {
   flex: 1;
 }
 
+.gm-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 20px 22px;
+  border-radius: 26px;
+  background: rgba(14, 165, 233, 0.12);
+  border: 1px solid rgba(125, 211, 252, 0.2);
+}
+
+.gm-progress-label {
+  margin: 0;
+  color: #bae6fd;
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.gm-progress-track {
+  width: 100%;
+  height: 20px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: rgba(15, 23, 42, 0.65);
+  border: 1px solid rgba(186, 230, 253, 0.18);
+}
+
+.gm-progress-fill {
+  width: 68%;
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #67e8f9 0%, #2dd4bf 100%);
+}
+
 .gm-action {
   width: 100%;
   min-height: 112px;
@@ -256,12 +296,16 @@ body {
 export function renderApp() {
   const [state, setState] = createSignal<AppState>({ kind: "idle" });
 
-  async function sendGm() {
+  function sendGm() {
     if (state().kind === "publishing") {
       return;
     }
 
     setState({ kind: "publishing" });
+    void publishGm();
+  }
+
+  async function publishGm() {
     try {
       const receipt = await publishEphemeralKind1({
         content: GM_CONTENT,
@@ -274,6 +318,8 @@ export function renderApp() {
         kind: "error",
         message: error instanceof Error ? error.message : String(error),
       });
+    } finally {
+      invalidateRuntimeApp();
     }
   }
 
@@ -295,7 +341,7 @@ export function renderApp() {
 }
 
 type IdleOrErrorCardProps = {
-  onSend: () => Promise<void>;
+  onSend: () => void;
   state: AppState;
 };
 
@@ -318,9 +364,17 @@ function IdleOrErrorCard(props: IdleOrErrorCardProps) {
         {isError()
           ? (state() as Extract<AppState, { kind: "error" }>).message
           : isPublishing()
-            ? "Generating a fresh nsec, signing one kind 1 note, and waiting for relay ack."
+            ? "Generating a fresh nsec, signing one kind 1 note, and waiting for relay ack. This can take around 10 seconds."
             : "One tap generates a fresh keypair, posts a kind 1 note with just GM, and turns the result into a scannable Primal link."}
       </p>
+      <Show when={isPublishing()}>
+        <section class="gm-progress">
+          <p class="gm-progress-label">Talking to relays</p>
+          <div class="gm-progress-track">
+            <div class="gm-progress-fill" />
+          </div>
+        </section>
+      </Show>
       <div class="gm-spacer" />
       <button
         type="button"
@@ -336,7 +390,7 @@ function IdleOrErrorCard(props: IdleOrErrorCardProps) {
 }
 
 type SuccessCardProps = {
-  onSend: () => Promise<void>;
+  onSend: () => void;
   receipt: PublishReceipt;
 };
 

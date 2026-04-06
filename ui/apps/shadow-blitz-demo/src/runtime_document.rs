@@ -134,7 +134,7 @@ impl RuntimeDocument {
             mutator.set_inner_html(self.frame_nodes.debug_id, "");
         }
         drop(mutator);
-        self.log_target_hitmap("counter");
+        self.log_target_hitmap(&self.touch_signal_target_id());
         self.debug_dump_render_state();
     }
 
@@ -229,6 +229,7 @@ impl RuntimeDocument {
                                 client_y: Some(pointer.client_y()),
                                 is_primary: Some(pointer.is_primary),
                             }),
+                            keyboard: None,
                         });
                     }
                 }
@@ -266,6 +267,7 @@ impl RuntimeDocument {
                         client_y: Some(pointer.client_y()),
                         is_primary: Some(pointer.is_primary),
                     }),
+                    keyboard: None,
                 })
             }
             _ => None,
@@ -329,6 +331,7 @@ impl RuntimeDocument {
                 client_y: Some(client_y),
                 is_primary: Some(is_primary),
             }),
+            keyboard: None,
         };
 
         if let Err(error) = self.dispatch_runtime_event(runtime_event, "raw") {
@@ -553,6 +556,7 @@ impl RuntimeDocument {
             checked: None,
             selection: None,
             pointer: None,
+            keyboard: None,
         };
 
         match self.dispatch_runtime_event(runtime_event, "touch-signal") {
@@ -724,6 +728,24 @@ impl Document for RuntimeDocument {
         while let Ok(event) = self.timer_rx.try_recv() {
             changed |= self.handle_timer_event(event);
         }
+        let dirty_payload = if let Some(runtime_session) = self.runtime_session.as_mut() {
+            match runtime_session.render_if_dirty() {
+                Ok(payload) => payload,
+                Err(error) => {
+                    eprintln!("[shadow-runtime-demo] runtime-event-error: {error}");
+                    None
+                }
+            }
+        } else {
+            None
+        };
+        if let Some(payload) = dirty_payload {
+            self.replace_document(payload);
+            self.refresh_debug_overlay();
+            self.redraw_requested = true;
+            runtime_log("runtime-dirty-render-applied");
+            changed = true;
+        }
         changed
     }
 }
@@ -832,6 +854,7 @@ fn auto_click_event_from_env(runtime_session_enabled: bool) -> Option<RuntimeDis
         checked: None,
         selection: None,
         pointer: None,
+        keyboard: None,
     })
 }
 

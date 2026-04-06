@@ -9,6 +9,7 @@ use deno_core::{FsModuleLoader, JsRuntime, PollEventLoopOptions, RuntimeOptions}
 use serde::{Deserialize, Serialize};
 
 const RENDER_EXPR: &str = "globalThis.SHADOW_RUNTIME_HOST.render()";
+const RENDER_IF_DIRTY_EXPR: &str = "globalThis.SHADOW_RUNTIME_HOST.renderIfDirty()";
 const SESSION_USAGE: &str = "usage: shadow-runtime-host --session <bundle-path>";
 
 fn main() -> Result<()> {
@@ -58,7 +59,8 @@ async fn run_session(runtime: &mut JsRuntime) -> Result<()> {
 
         let response = match serde_json::from_str::<SessionRequest>(&line) {
             Ok(request) => match handle_session_request(runtime, request).await {
-                Ok(payload) => SessionResponse::Ok { payload },
+                Ok(Some(payload)) => SessionResponse::Ok { payload },
+                Ok(None) => SessionResponse::NoUpdate,
                 Err(error) => SessionResponse::Error {
                     message: error.to_string(),
                 },
@@ -80,9 +82,17 @@ async fn run_session(runtime: &mut JsRuntime) -> Result<()> {
 async fn handle_session_request(
     runtime: &mut JsRuntime,
     request: SessionRequest,
-) -> Result<RuntimeDocumentPayload> {
-    let expr = match request {
+) -> Result<Option<RuntimeDocumentPayload>> {
+    if matches!(request, SessionRequest::RenderIfDirty) {
+        runtime
+            .run_event_loop(PollEventLoopOptions::default())
+            .await
+            .context("run deno_core event loop for dirty render")?;
+    }
+
+    let expr = match &request {
         SessionRequest::Render => String::from(RENDER_EXPR),
+        SessionRequest::RenderIfDirty => String::from(RENDER_IF_DIRTY_EXPR),
         SessionRequest::Dispatch { event } => {
             let event_json =
                 serde_json::to_string(&event).context("encode runtime dispatch event")?;
@@ -91,7 +101,15 @@ async fn handle_session_request(
     };
 
     let payload_json = execute_string_expr(runtime, &expr, "<session>").await?;
-    serde_json::from_str(&payload_json).context("decode runtime document payload")
+    match request {
+        SessionRequest::RenderIfDirty => serde_json::from_str(&payload_json)
+            .context("decode maybe runtime document payload"),
+        SessionRequest::Render | SessionRequest::Dispatch { .. } => serde_json::from_str::<
+            RuntimeDocumentPayload,
+        >(&payload_json)
+        .map(Some)
+        .context("decode runtime document payload"),
+    }
 }
 
 async fn execute_string_expr(
@@ -149,6 +167,7 @@ fn resolve_main_module(path: String) -> Result<Url> {
 #[serde(tag = "op", rename_all = "snake_case")]
 enum SessionRequest {
     Render,
+    RenderIfDirty,
     Dispatch { event: RuntimeDispatchEvent },
 }
 
@@ -166,6 +185,8 @@ struct RuntimeDispatchEvent {
     selection: Option<RuntimeSelectionEvent>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pointer: Option<RuntimePointerEvent>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    keyboard: Option<RuntimeKeyboardEvent>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -189,6 +210,22 @@ struct RuntimePointerEvent {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
+struct RuntimeKeyboardEvent {
+    #[serde(rename = "key", skip_serializing_if = "Option::is_none")]
+    key: Option<String>,
+    #[serde(rename = "code", skip_serializing_if = "Option::is_none")]
+    code: Option<String>,
+    #[serde(rename = "altKey", skip_serializing_if = "Option::is_none")]
+    alt_key: Option<bool>,
+    #[serde(rename = "ctrlKey", skip_serializing_if = "Option::is_none")]
+    ctrl_key: Option<bool>,
+    #[serde(rename = "metaKey", skip_serializing_if = "Option::is_none")]
+    meta_key: Option<bool>,
+    #[serde(rename = "shiftKey", skip_serializing_if = "Option::is_none")]
+    shift_key: Option<bool>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
 struct RuntimeDocumentPayload {
     html: String,
     css: Option<String>,
@@ -198,5 +235,6 @@ struct RuntimeDocumentPayload {
 #[serde(tag = "status", rename_all = "snake_case")]
 enum SessionResponse {
     Ok { payload: RuntimeDocumentPayload },
+    NoUpdate,
     Error { message: String },
 }
