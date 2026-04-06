@@ -36,6 +36,8 @@ use winit::platform::wayland::WindowAttributesWayland;
 const BLITZ_DEMO_WAYLAND_APP_ID: &str = "dev.shadow.blitz";
 #[cfg(target_os = "linux")]
 const RUNTIME_DEMO_WAYLAND_APP_ID: &str = "dev.shadow.counter";
+const DEFAULT_SURFACE_WIDTH: u32 = 384;
+const DEFAULT_SURFACE_HEIGHT: u32 = 720;
 
 pub fn run() {
     let demo_mode = DemoMode::from_env();
@@ -370,10 +372,14 @@ enum RuntimeEmbedderEvent {
 }
 
 fn window_attributes(demo_mode: DemoMode) -> WindowAttributes {
+    let (surface_width, surface_height) = surface_size_from_env();
     let attributes = WindowAttributes::default()
         .with_title(demo_mode.title())
         .with_resizable(false)
-        .with_surface_size(LogicalSize::new(384.0, 720.0));
+        .with_surface_size(LogicalSize::new(
+            surface_width as f64,
+            surface_height as f64,
+        ));
 
     #[cfg(target_os = "linux")]
     {
@@ -388,6 +394,21 @@ fn window_attributes(demo_mode: DemoMode) -> WindowAttributes {
     attributes
 }
 
+fn document_should_exit(demo_mode: DemoMode, window: &mut View<WindowRenderer>) -> bool {
+fn surface_size_from_env() -> (u32, u32) {
+    (
+        surface_dimension_from_env("SHADOW_BLITZ_SURFACE_WIDTH", DEFAULT_SURFACE_WIDTH),
+        surface_dimension_from_env("SHADOW_BLITZ_SURFACE_HEIGHT", DEFAULT_SURFACE_HEIGHT),
+    )
+}
+
+fn surface_dimension_from_env(key: &str, default: u32) -> u32 {
+    env::var(key)
+        .ok()
+        .and_then(|value| value.trim().parse::<u32>().ok())
+        .filter(|value| *value > 0)
+        .unwrap_or(default)
+}
 fn document_should_exit(demo_mode: DemoMode, window: &mut View<WindowRenderer>) -> bool {
     match demo_mode {
         DemoMode::Static => window.downcast_doc_mut::<StaticDocument>().should_exit(),

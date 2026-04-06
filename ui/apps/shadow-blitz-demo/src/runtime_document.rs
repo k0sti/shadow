@@ -19,6 +19,8 @@ use crate::runtime_session::{RuntimeDispatchEvent, RuntimePointerEvent, RuntimeS
 const STYLE_SELECTOR: &str = "#shadow-blitz-style";
 const ROOT_SELECTOR: &str = "#shadow-blitz-root";
 const DEBUG_SELECTOR: &str = "#shadow-blitz-debug";
+const DEFAULT_SURFACE_WIDTH: u32 = 384;
+const DEFAULT_SURFACE_HEIGHT: u32 = 720;
 const SAMPLE_RUNTIME_HTML: &str = r#"
 <section class="runtime-card">
   <p class="runtime-eyebrow">Shadow Runtime</p>
@@ -523,10 +525,11 @@ impl RuntimeDocument {
     }
 
     fn log_target_hitmap(&mut self, target_id: &str) {
+        let (surface_width, surface_height) = runtime_surface_size();
         let mut inner = self.inner_mut();
         inner.set_viewport(blitz_traits::shell::Viewport::new(
-            384,
-            720,
+            surface_width,
+            surface_height,
             1.0,
             blitz_traits::shell::ColorScheme::Dark,
         ));
@@ -540,8 +543,8 @@ impl RuntimeDocument {
         let mut max_y = 0_u32;
         let mut sample = None;
 
-        for y in (0..720).step_by(4) {
-            for x in (0..384).step_by(4) {
+        for y in (0..surface_height).step_by(4) {
+            for x in (0..surface_width).step_by(4) {
                 if self.shadow_target_id_at(x as f32, y as f32).as_deref() == Some(target_id) {
                     hit_count += 1;
                     min_x = min_x.min(x);
@@ -735,18 +738,19 @@ impl RuntimeDocument {
 
     #[cfg(test)]
     fn point_for_target(&mut self, target_id: &str) -> (f32, f32) {
+        let (surface_width, surface_height) = runtime_surface_size();
         let mut inner = self.inner_mut();
         inner.set_viewport(blitz_traits::shell::Viewport::new(
-            384,
-            720,
+            surface_width,
+            surface_height,
             1.0,
             blitz_traits::shell::ColorScheme::Dark,
         ));
         inner.resolve(0.0);
         drop(inner);
 
-        for y in (0..720).step_by(4) {
-            for x in (0..384).step_by(4) {
+        for y in (0..surface_height).step_by(4) {
+            for x in (0..surface_width).step_by(4) {
                 if self.shadow_target_id_at(x as f32, y as f32).as_deref() == Some(target_id) {
                     return (x as f32, y as f32);
                 }
@@ -758,10 +762,11 @@ impl RuntimeDocument {
 
     #[cfg(test)]
     fn target_at(&mut self, x: f32, y: f32) -> Option<String> {
+        let (surface_width, surface_height) = runtime_surface_size();
         let mut inner = self.inner_mut();
         inner.set_viewport(blitz_traits::shell::Viewport::new(
-            384,
-            720,
+            surface_width,
+            surface_height,
             1.0,
             blitz_traits::shell::ColorScheme::Dark,
         ));
@@ -924,6 +929,21 @@ fn truncate_debug(value: &str, max_chars: usize) -> String {
     } else {
         truncated
     }
+}
+
+fn runtime_surface_size() -> (u32, u32) {
+    (
+        runtime_surface_dimension("SHADOW_BLITZ_SURFACE_WIDTH", DEFAULT_SURFACE_WIDTH),
+        runtime_surface_dimension("SHADOW_BLITZ_SURFACE_HEIGHT", DEFAULT_SURFACE_HEIGHT),
+    )
+}
+
+fn runtime_surface_dimension(key: &str, default: u32) -> u32 {
+    env::var(key)
+        .ok()
+        .and_then(|value| value.trim().parse::<u32>().ok())
+        .filter(|value| *value > 0)
+        .unwrap_or(default)
 }
 #[cfg(test)]
 mod tests {

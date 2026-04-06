@@ -3,12 +3,12 @@ import { publishEphemeralKind1 } from "@shadow/app-runtime-os";
 const GM_CONTENT = "GM";
 export const runtimeDocumentCss = `
 .gm-shell {
-  width: 384px;
-  height: 720px;
+  width: 100%;
+  min-height: 100vh;
   display: flex;
   flex-direction: column;
-  justify-content: center;
-  align-items: center;
+  justify-content: flex-start;
+  align-items: stretch;
   padding: 28px;
   box-sizing: border-box;
   background: linear-gradient(180deg, #02111b 0%, #05334d 45%, #0f766e 100%);
@@ -16,12 +16,14 @@ export const runtimeDocumentCss = `
 }
 
 .gm-card {
+  flex: 1;
   width: 100%;
+  min-height: 100%;
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  padding: 22px;
-  border-radius: 32px;
+  gap: 22px;
+  padding: 34px 30px;
+  border-radius: 36px;
   box-sizing: border-box;
   box-shadow: 0 28px 90px rgba(0, 0, 0, 0.32);
 }
@@ -56,7 +58,7 @@ export const runtimeDocumentCss = `
 
 .gm-headline {
   margin: 0;
-  font-size: 38px;
+  font-size: 58px;
   line-height: 0.96;
   letter-spacing: -0.05em;
 }
@@ -71,8 +73,8 @@ export const runtimeDocumentCss = `
 
 .gm-body {
   margin: 0;
-  font-size: 16px;
-  line-height: 1.45;
+  font-size: 28px;
+  line-height: 1.32;
 }
 
 .gm-body-error {
@@ -106,9 +108,9 @@ export const runtimeDocumentCss = `
 .gm-meta {
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  padding: 16px;
-  border-radius: 24px;
+  gap: 18px;
+  padding: 22px;
+  border-radius: 28px;
   background: #f0fdfa;
   border: 1px solid rgba(13, 148, 136, 0.18);
 }
@@ -122,7 +124,7 @@ export const runtimeDocumentCss = `
 .gm-label {
   margin: 0;
   color: #0f766e;
-  font-size: 12px;
+  font-size: 16px;
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -132,8 +134,8 @@ export const runtimeDocumentCss = `
   margin: 0;
   color: #0f172a;
   font-family: "Droid Sans Mono", "Cutive Mono", monospace;
-  font-size: 13px;
-  line-height: 1.4;
+  font-size: 19px;
+  line-height: 1.42;
   overflow-wrap: anywhere;
 }
 `;

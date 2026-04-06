@@ -6,10 +6,17 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/pixel_common.sh"
 ensure_bootimg_shell "$@"
 
+serial="$(pixel_resolve_serial)"
+panel_size="$(pixel_display_size "$serial")"
+panel_width="${panel_size%x*}"
+panel_height="${panel_size#*x}"
+
 gm_guest_env=$(
-  cat <<'EOF'
+  cat <<EOF
 SHADOW_RUNTIME_NOSTR_RELAY_URLS=wss://relay.primal.net/,wss://relay.damus.io/
 SHADOW_RUNTIME_NOSTR_PUBLISH_TIMEOUT_MS=20000
+SHADOW_BLITZ_SURFACE_WIDTH=$panel_width
+SHADOW_BLITZ_SURFACE_HEIGHT=$panel_height
 EOF
 )
 
