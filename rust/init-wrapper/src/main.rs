@@ -9,6 +9,9 @@ use std::process::Command;
 use std::thread;
 use std::time::{Duration, Instant};
 
+const GUEST_RUNTIME_CLIENT_BIN: &str = "/shadow-blitz-demo";
+const GUEST_LEGACY_CLIENT_BIN: &str = "/shadow-counter-guest";
+
 fn log_stdio(message: &str) {
     let line = format!("[shadow-init] {message}\n");
     let _ = std::io::stdout().write_all(line.as_bytes());
@@ -111,13 +114,23 @@ fn background_payload() -> Option<BackgroundPayload> {
     if path_exists("/shadow-bootstrap") {
         return Some(BackgroundPayload::Binary("/shadow-bootstrap"));
     }
-    if path_exists("/shadow-compositor-guest") && path_exists("/shadow-counter-guest") {
+    if path_exists("/shadow-compositor-guest")
+        && (path_exists(GUEST_RUNTIME_CLIENT_BIN) || path_exists(GUEST_LEGACY_CLIENT_BIN))
+    {
         return Some(BackgroundPayload::GuestUi);
     }
     if path_exists("/drm-rect") {
         return Some(BackgroundPayload::Binary("/drm-rect"));
     }
     None
+}
+
+fn default_guest_client_bin() -> &'static str {
+    if path_exists(GUEST_RUNTIME_CLIENT_BIN) {
+        GUEST_RUNTIME_CLIENT_BIN
+    } else {
+        GUEST_LEGACY_CLIENT_BIN
+    }
 }
 
 fn wait_for_path(path: &str, timeout: Duration) -> bool {
@@ -182,15 +195,19 @@ fn run_background_payload(payload: BackgroundPayload) -> ! {
                 }
             };
 
+            let guest_client = default_guest_client_bin();
             let mut command = Command::new("/shadow-compositor-guest");
             command
                 .env("XDG_RUNTIME_DIR", runtime_dir)
                 .env("TMPDIR", runtime_dir)
-                .env("SHADOW_GUEST_CLIENT", "/shadow-counter-guest")
+                .env("SHADOW_GUEST_CLIENT", guest_client)
                 .env(
                     "RUST_LOG",
-                    "shadow_compositor_guest=info,shadow_counter_guest=info,smithay=warn",
+                    "shadow_compositor_guest=info,shadow_blitz_demo=info,shadow_counter_guest=info,smithay=warn",
                 );
+            if guest_client == GUEST_RUNTIME_CLIENT_BIN {
+                command.env("SHADOW_GUEST_CLIENT_MODE", "runtime");
+            }
             run_command(command, "/shadow-compositor-guest");
         }
     }

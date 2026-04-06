@@ -5,7 +5,7 @@ use std::{
     ffi::OsString,
     fs,
     os::{fd::AsRawFd, unix::net::UnixStream},
-    path::PathBuf,
+    path::{Path, PathBuf},
     process::Child,
     sync::Arc,
     time::{Duration, Instant},
@@ -42,6 +42,16 @@ use smithay::{
 };
 
 const BTN_LEFT: u32 = 0x110;
+const GUEST_RUNTIME_CLIENT_BIN: &str = "/data/local/tmp/shadow-blitz-demo";
+const GUEST_LEGACY_CLIENT_BIN: &str = "/data/local/tmp/shadow-counter-guest";
+
+fn default_guest_client_path() -> String {
+    if Path::new(GUEST_RUNTIME_CLIENT_BIN).exists() {
+        GUEST_RUNTIME_CLIENT_BIN.into()
+    } else {
+        GUEST_LEGACY_CLIENT_BIN.into()
+    }
+}
 
 #[derive(Clone, Debug)]
 enum WaylandTransport {
@@ -234,21 +244,48 @@ impl ShadowGuestCompositor {
     }
 
     fn spawn_client(&mut self) -> std::io::Result<()> {
-        let client_path = std::env::var("SHADOW_GUEST_CLIENT")
-            .unwrap_or_else(|_| "/data/local/tmp/shadow-counter-guest".into());
+        let client_path =
+            std::env::var("SHADOW_GUEST_CLIENT").unwrap_or_else(|_| default_guest_client_path());
         let runtime_dir = std::env::var("XDG_RUNTIME_DIR")
             .unwrap_or_else(|_| "/data/local/tmp/shadow-runtime".into());
 
         let mut command = std::process::Command::new(&client_path);
         command.env("XDG_RUNTIME_DIR", runtime_dir);
+        let mut has_explicit_blitz_mode = std::env::var_os("SHADOW_BLITZ_DEMO_MODE").is_some();
         if let Some(value) = std::env::var("SHADOW_GUEST_CLIENT_ENV").ok() {
             for assignment in value.split_whitespace() {
                 if let Some((key, env_value)) = assignment.split_once('=') {
                     if !key.is_empty() {
+                        has_explicit_blitz_mode |= key == "SHADOW_BLITZ_DEMO_MODE";
                         command.env(key, env_value);
                     }
                 }
             }
+        }
+        if !has_explicit_blitz_mode {
+            match std::env::var("SHADOW_GUEST_CLIENT_MODE").ok().as_deref() {
+                Some("runtime") => {
+                    command.env("SHADOW_BLITZ_DEMO_MODE", "runtime");
+                }
+                Some("static") | None => {}
+                Some(other) => {
+                    tracing::warn!(
+                        "[shadow-guest-compositor] ignoring unknown SHADOW_GUEST_CLIENT_MODE={other}"
+                    );
+                }
+            }
+        }
+        if let Some(value) = std::env::var_os("SHADOW_GUEST_CLIENT_EXIT_ON_CONFIGURE")
+            .or_else(|| std::env::var_os("SHADOW_GUEST_COUNTER_EXIT_ON_CONFIGURE"))
+        {
+            command.env("SHADOW_GUEST_CLIENT_EXIT_ON_CONFIGURE", value.clone());
+            command.env("SHADOW_GUEST_COUNTER_EXIT_ON_CONFIGURE", value);
+        }
+        if let Some(value) = std::env::var_os("SHADOW_GUEST_CLIENT_LINGER_MS")
+            .or_else(|| std::env::var_os("SHADOW_GUEST_COUNTER_LINGER_MS"))
+        {
+            command.env("SHADOW_GUEST_CLIENT_LINGER_MS", value.clone());
+            command.env("SHADOW_GUEST_COUNTER_LINGER_MS", value);
         }
 
         match &self.transport {
@@ -280,13 +317,6 @@ impl ShadowGuestCompositor {
                 );
                 return Ok(());
             }
-        }
-
-        if let Some(value) = std::env::var_os("SHADOW_GUEST_CLIENT_EXIT_ON_CONFIGURE") {
-            command.env("SHADOW_GUEST_COUNTER_EXIT_ON_CONFIGURE", value);
-        }
-        if let Some(value) = std::env::var_os("SHADOW_GUEST_COUNTER_LINGER_MS") {
-            command.env("SHADOW_GUEST_COUNTER_LINGER_MS", value);
         }
 
         let child = command.spawn()?;

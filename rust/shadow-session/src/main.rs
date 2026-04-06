@@ -7,6 +7,9 @@ use std::process::{self, Command};
 use std::thread;
 use std::time::{Duration, Instant};
 
+const GUEST_RUNTIME_CLIENT_BIN: &str = "/shadow-blitz-demo";
+const GUEST_LEGACY_CLIENT_BIN: &str = "/shadow-counter-guest";
+
 fn log_stdio(message: &str) {
     let line = format!("[shadow-session] {message}\n");
     let _ = std::io::stdout().write_all(line.as_bytes());
@@ -122,13 +125,22 @@ impl SessionMode {
             Some("guest-ui") => Ok(Self::GuestUi),
             Some(other) => Err(format!("unknown SHADOW_SESSION_MODE={other}")),
             None if path_exists("/shadow-compositor-guest")
-                && path_exists("/shadow-counter-guest") =>
+                && (path_exists(GUEST_RUNTIME_CLIENT_BIN)
+                    || path_exists(GUEST_LEGACY_CLIENT_BIN)) =>
             {
                 Ok(Self::GuestUi)
             }
             None if path_exists("/drm-rect") => Ok(Self::DrmRect),
             None => Err("could not detect a session mode".into()),
         }
+    }
+}
+
+fn default_guest_client_bin() -> &'static str {
+    if path_exists(GUEST_RUNTIME_CLIENT_BIN) {
+        GUEST_RUNTIME_CLIENT_BIN
+    } else {
+        GUEST_LEGACY_CLIENT_BIN
     }
 }
 
@@ -165,20 +177,25 @@ fn run_guest_ui() -> ! {
 
     let compositor_bin = env::var("SHADOW_GUEST_COMPOSITOR_BIN")
         .unwrap_or_else(|_| "/shadow-compositor-guest".into());
+    let guest_client =
+        env::var("SHADOW_GUEST_CLIENT").unwrap_or_else(|_| default_guest_client_bin().into());
     let mut command = Command::new(&compositor_bin);
     command
         .env("XDG_RUNTIME_DIR", runtime_dir)
         .env("TMPDIR", runtime_dir)
-        .env(
-            "SHADOW_GUEST_CLIENT",
-            env::var("SHADOW_GUEST_CLIENT").unwrap_or_else(|_| "/shadow-counter-guest".into()),
-        )
+        .env("SHADOW_GUEST_CLIENT", &guest_client)
         .env(
             "RUST_LOG",
             env::var("RUST_LOG").unwrap_or_else(|_| {
-                "shadow_compositor_guest=info,shadow_counter_guest=info,smithay=warn".into()
+                "shadow_compositor_guest=info,shadow_blitz_demo=info,shadow_counter_guest=info,smithay=warn".into()
             }),
         );
+
+    if let Some(value) = env::var_os("SHADOW_GUEST_CLIENT_MODE") {
+        command.env("SHADOW_GUEST_CLIENT_MODE", value);
+    } else if guest_client == GUEST_RUNTIME_CLIENT_BIN {
+        command.env("SHADOW_GUEST_CLIENT_MODE", "runtime");
+    }
 
     if let Some(value) = env::var_os("SHADOW_GUEST_COMPOSITOR_ENABLE_DRM") {
         command.env("SHADOW_GUEST_COMPOSITOR_ENABLE_DRM", value);
@@ -195,8 +212,10 @@ fn run_guest_ui() -> ! {
     if let Some(value) = env::var_os("SHADOW_GUEST_CLIENT_EXIT_ON_CONFIGURE") {
         command.env("SHADOW_GUEST_CLIENT_EXIT_ON_CONFIGURE", value);
     }
-    if let Some(value) = env::var_os("SHADOW_GUEST_COUNTER_LINGER_MS") {
-        command.env("SHADOW_GUEST_COUNTER_LINGER_MS", value);
+    if let Some(value) = env::var_os("SHADOW_GUEST_CLIENT_LINGER_MS")
+        .or_else(|| env::var_os("SHADOW_GUEST_COUNTER_LINGER_MS"))
+    {
+        command.env("SHADOW_GUEST_CLIENT_LINGER_MS", value);
     }
     if let Some(value) = env::var_os("SHADOW_GUEST_FRAME_PATH") {
         command.env("SHADOW_GUEST_FRAME_PATH", value);

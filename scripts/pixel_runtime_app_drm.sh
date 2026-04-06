@@ -19,7 +19,6 @@ touch_signal_path="$(pixel_runtime_dir)/touch-signal"
 
 runtime_guest_env=$(
   cat <<EOF
-SHADOW_BLITZ_DEMO_MODE=runtime
 SHADOW_BLITZ_RUNTIME_EXIT_DELAY_MS=$PIXEL_BLITZ_RUNTIME_EXIT_DELAY_MS
 SHADOW_BLITZ_RAW_POINTER_FALLBACK=1
 SHADOW_BLITZ_TOUCH_ANYWHERE_TARGET=counter
@@ -37,6 +36,7 @@ runtime_guest_env="$(printf '%s\n' "$runtime_guest_env" | tr '\n' ' ' | sed 's/[
 
 runtime_session_env=$(
   cat <<EOF
+SHADOW_GUEST_CLIENT_MODE=runtime
 SHADOW_GUEST_TOUCH_SIGNAL_PATH=$touch_signal_path
 EOF
 )

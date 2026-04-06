@@ -65,16 +65,32 @@ struct CounterConfig {
 impl CounterConfig {
     fn from_env() -> Self {
         Self {
-            width: parse_positive_i32_env("SHADOW_GUEST_COUNTER_WIDTH").unwrap_or(DEFAULT_WIDTH),
-            height: parse_positive_i32_env("SHADOW_GUEST_COUNTER_HEIGHT").unwrap_or(DEFAULT_HEIGHT),
-            fullscreen: env::var_os("SHADOW_GUEST_COUNTER_FULLSCREEN").is_some(),
-            exit_on_configure: env::var_os("SHADOW_GUEST_COUNTER_EXIT_ON_CONFIGURE").is_some(),
-            linger_ms: env::var("SHADOW_GUEST_COUNTER_LINGER_MS")
+            width: parse_positive_i32_env_any(&[
+                "SHADOW_GUEST_CLIENT_WIDTH",
+                "SHADOW_GUEST_COUNTER_WIDTH",
+            ])
+            .unwrap_or(DEFAULT_WIDTH),
+            height: parse_positive_i32_env_any(&[
+                "SHADOW_GUEST_CLIENT_HEIGHT",
+                "SHADOW_GUEST_COUNTER_HEIGHT",
+            ])
+            .unwrap_or(DEFAULT_HEIGHT),
+            fullscreen: env::var_os("SHADOW_GUEST_CLIENT_FULLSCREEN")
+                .or_else(|| env::var_os("SHADOW_GUEST_COUNTER_FULLSCREEN"))
+                .is_some(),
+            exit_on_configure: env::var_os("SHADOW_GUEST_CLIENT_EXIT_ON_CONFIGURE")
+                .or_else(|| env::var_os("SHADOW_GUEST_COUNTER_EXIT_ON_CONFIGURE"))
+                .is_some(),
+            linger_ms: env::var("SHADOW_GUEST_CLIENT_LINGER_MS")
                 .ok()
+                .or_else(|| env::var("SHADOW_GUEST_COUNTER_LINGER_MS").ok())
                 .and_then(|value| value.parse::<u64>().ok())
                 .unwrap_or(250),
-            pattern: parse_pattern_env("SHADOW_GUEST_COUNTER_PATTERN")
-                .unwrap_or(CounterPattern::Checker),
+            pattern: parse_pattern_env_any(&[
+                "SHADOW_GUEST_CLIENT_PATTERN",
+                "SHADOW_GUEST_COUNTER_PATTERN",
+            ])
+            .unwrap_or(CounterPattern::Checker),
         }
     }
 
@@ -149,31 +165,38 @@ impl AppState {
     }
 }
 
-fn parse_positive_i32_env(name: &str) -> Option<i32> {
-    let value = env::var(name).ok()?;
-    match value.parse::<i32>() {
-        Ok(parsed) if parsed > 0 => Some(parsed),
-        Ok(_) => {
-            tracing::warn!("[shadow-guest-counter] ignoring non-positive {name}={value}");
-            None
-        }
-        Err(error) => {
-            tracing::warn!("[shadow-guest-counter] ignoring invalid {name}={value}: {error}");
-            None
+fn parse_positive_i32_env_any(names: &[&str]) -> Option<i32> {
+    for name in names {
+        if let Ok(value) = env::var(name) {
+            match value.parse::<i32>() {
+                Ok(parsed) if parsed > 0 => return Some(parsed),
+                Ok(_) => {
+                    tracing::warn!("[shadow-guest-counter] ignoring non-positive {name}={value}");
+                }
+                Err(error) => {
+                    tracing::warn!(
+                        "[shadow-guest-counter] ignoring invalid {name}={value}: {error}"
+                    );
+                }
+            }
         }
     }
+    None
 }
 
-fn parse_pattern_env(name: &str) -> Option<CounterPattern> {
-    let value = env::var(name).ok()?;
-    match value.as_str() {
-        "checker" => Some(CounterPattern::Checker),
-        "quadrants" => Some(CounterPattern::Quadrants),
-        other => {
-            tracing::warn!("[shadow-guest-counter] ignoring unknown {name}={other}");
-            None
+fn parse_pattern_env_any(names: &[&str]) -> Option<CounterPattern> {
+    for name in names {
+        if let Ok(value) = env::var(name) {
+            match value.as_str() {
+                "checker" => return Some(CounterPattern::Checker),
+                "quadrants" => return Some(CounterPattern::Quadrants),
+                other => {
+                    tracing::warn!("[shadow-guest-counter] ignoring unknown {name}={other}");
+                }
+            }
         }
     }
+    None
 }
 
 fn paint_buffer(bytes: &mut [u8], width: i32, height: i32, pattern: CounterPattern) {
