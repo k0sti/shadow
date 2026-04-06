@@ -81,8 +81,8 @@ const runtimeApp = createRuntimeApp(renderApp, { css: runtimeDocumentCss });
 const documentPayload = runtimeApp.renderDocument();
 globalThis.SHADOW_RUNTIME_APP = runtimeApp;
 globalThis.SHADOW_RUNTIME_HOST = {
-  dispatch(event) {
-    return JSON.stringify(runtimeApp.dispatch(event));
+  async dispatch(event) {
+    return JSON.stringify(await runtimeApp.dispatch(event));
   },
   render() {
     return JSON.stringify(runtimeApp.renderDocument());

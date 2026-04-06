@@ -13,10 +13,9 @@ panel_height="${panel_size#*x}"
 
 gm_guest_env=$(
   cat <<EOF
-SHADOW_RUNTIME_NOSTR_RELAY_URLS=wss://relay.primal.net/,wss://relay.damus.io/
-SHADOW_RUNTIME_NOSTR_PUBLISH_TIMEOUT_MS=20000
 SHADOW_BLITZ_SURFACE_WIDTH=$panel_width
 SHADOW_BLITZ_SURFACE_HEIGHT=$panel_height
+SHADOW_BLITZ_TOUCH_ANYWHERE_TARGET=gm
 EOF
 )
 

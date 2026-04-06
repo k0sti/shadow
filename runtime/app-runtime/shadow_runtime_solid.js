@@ -86,8 +86,8 @@ export function createRuntimeApp(renderApp, options = {}) {
   const css = typeof options.css === "string" ? options.css : null;
 
   return {
-    dispatch(event) {
-      dispatchRuntimeEvent(mount, event);
+    async dispatch(event) {
+      await dispatchRuntimeEvent(mount, event);
       return renderMountToDocument(mount, css);
     },
     dispose,
@@ -233,7 +233,7 @@ function isTextNode(node) {
   return node?.kind === "text";
 }
 
-function dispatchRuntimeEvent(root, event) {
+async function dispatchRuntimeEvent(root, event) {
   const normalizedEvent = normalizeRuntimeEvent(event);
   const targetNode = findNodeByShadowId(root, normalizedEvent.targetId);
   if (!targetNode) {
@@ -243,7 +243,10 @@ function dispatchRuntimeEvent(root, event) {
   applyRuntimeEventState(targetNode, normalizedEvent);
   const handler = targetNode.listeners[normalizedEvent.type];
   if (typeof handler === "function") {
-    handler(createRuntimeEvent(targetNode, normalizedEvent));
+    const handlerResult = handler(createRuntimeEvent(targetNode, normalizedEvent));
+    if (handlerResult != null && typeof handlerResult.then === "function") {
+      await handlerResult;
+    }
   }
 }
 

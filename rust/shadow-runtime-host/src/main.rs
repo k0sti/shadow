@@ -102,10 +102,11 @@ async fn execute_string_expr(
     let value = runtime
         .execute_script(script_name.to_owned(), expr.to_owned())
         .with_context(|| format!("execute script {script_name}"))?;
-    runtime
-        .run_event_loop(PollEventLoopOptions::default())
+    #[allow(deprecated)]
+    let value = runtime
+        .resolve_value(value)
         .await
-        .context("run deno_core event loop")?;
+        .with_context(|| format!("resolve script {script_name}"))?;
     v8_value_to_string(runtime, value)
 }
 
