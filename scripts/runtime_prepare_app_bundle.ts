@@ -71,9 +71,13 @@ const renderApp = appModule.renderApp ?? appModule.default;
 if (typeof renderApp !== "function") {
   throw new TypeError("compiled app module must export renderApp or default");
 }
+const runtimeDocumentCss =
+  typeof appModule.runtimeDocumentCss === "string"
+    ? appModule.runtimeDocumentCss
+    : null;
 
 ensureShadowRuntimeOs();
-const runtimeApp = createRuntimeApp(renderApp);
+const runtimeApp = createRuntimeApp(renderApp, { css: runtimeDocumentCss });
 const documentPayload = runtimeApp.renderDocument();
 globalThis.SHADOW_RUNTIME_APP = runtimeApp;
 globalThis.SHADOW_RUNTIME_HOST = {

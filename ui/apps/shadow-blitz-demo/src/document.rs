@@ -224,7 +224,7 @@ body {
     radial-gradient(circle at top, var(--glow), transparent 32%),
     linear-gradient(180deg, var(--bg0), var(--bg1) 50%, var(--bg2));
   color: var(--text);
-  font: 500 16px/1.5 system-ui, sans-serif;
+  font: 500 16px/1.5 "Google Sans", "Roboto", "Droid Sans", "Noto Sans", sans-serif;
 }
 .frame {
   width: min(480px, 100%);
@@ -301,7 +301,7 @@ body {
     radial-gradient(circle at top left, rgba(255, 255, 255, 0.5), transparent 28%),
     linear-gradient(180deg, var(--bg0), var(--bg1) 48%, var(--bg2));
   color: var(--text);
-  font: 600 16px/1.5 system-ui, sans-serif;
+  font: 600 16px/1.5 "Google Sans", "Roboto", "Droid Sans", "Noto Sans", sans-serif;
 }
 .frame {
   width: min(480px, 100%);

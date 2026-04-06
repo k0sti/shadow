@@ -49,7 +49,7 @@ body {
     radial-gradient(circle at top, rgba(47, 184, 255, 0.18), transparent 34%),
     linear-gradient(180deg, var(--bg0), var(--bg1));
   color: var(--text);
-  font: 500 16px/1.5 system-ui, sans-serif;
+  font: 500 16px/1.5 "Google Sans", "Roboto", "Droid Sans", "Noto Sans", sans-serif;
 }
 #shadow-blitz-root {
   min-height: 100vh;
@@ -219,6 +219,7 @@ impl RuntimeDocument {
         }
         drop(mutator);
         self.log_target_hitmap("counter");
+        self.debug_dump_render_state();
     }
 
     fn handle_runtime_ui_event(&mut self, event: UiEvent) {
@@ -672,8 +673,6 @@ impl RuntimeDocument {
             .clone()
             .unwrap_or_else(|| String::from("counter"))
     }
-
-    #[cfg(test)]
     fn node_outer_html(&self, selector: &str) -> String {
         let node_id = self
             .inner
@@ -686,7 +685,6 @@ impl RuntimeDocument {
             .outer_html()
     }
 
-    #[cfg(test)]
     fn node_text_content(&self, selector: &str) -> String {
         let node_id = self
             .inner
@@ -697,6 +695,42 @@ impl RuntimeDocument {
             .get_node(node_id)
             .expect("node by selector")
             .text_content()
+    }
+
+    fn debug_dump_render_state(&self) {
+        if env::var_os("SHADOW_BLITZ_RUNTIME_DEBUG_DUMP").is_none() {
+            return;
+        }
+
+        let root_html = self.node_outer_html(ROOT_SELECTOR);
+        let root_text = self.node_text_content(ROOT_SELECTOR);
+        let style_text = self.node_text_content(STYLE_SELECTOR);
+
+        eprintln!(
+            "[shadow-runtime-demo] render-debug css_len={} root_html_len={} root_text_len={} root_text_excerpt={:?} root_html_excerpt={:?}",
+            style_text.len(),
+            root_html.len(),
+            root_text.len(),
+            truncate_debug(&root_text, 160),
+            truncate_debug(&root_html, 200),
+        );
+
+        self.debug_dump_node_layout("h1");
+        self.debug_dump_node_layout("p");
+        self.debug_dump_node_layout("button");
+    }
+
+    fn debug_dump_node_layout(&self, selector: &str) {
+        let Ok(Some(node_id)) = self.inner.query_selector(selector) else {
+            eprintln!("[shadow-runtime-demo] node-layout selector={selector:?} missing");
+            return;
+        };
+        eprintln!(
+            "[shadow-runtime-demo] node-layout selector={selector:?} node_id={} text={:?}",
+            node_id,
+            self.inner.get_node(node_id).map(|node| node.text_content()),
+        );
+        self.inner.debug_log_node(node_id);
     }
 
     #[cfg(test)]
@@ -882,6 +916,15 @@ fn auto_click_event_from_env(runtime_session_enabled: bool) -> Option<RuntimeDis
     })
 }
 
+fn truncate_debug(value: &str, max_chars: usize) -> String {
+    let mut chars = value.chars();
+    let truncated: String = chars.by_ref().take(max_chars).collect();
+    if chars.next().is_some() {
+        format!("{truncated}...")
+    } else {
+        truncated
+    }
+}
 #[cfg(test)]
 mod tests {
     use super::{RuntimeDocument, RuntimeDocumentPayload};

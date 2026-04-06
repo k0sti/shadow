@@ -9,22 +9,22 @@ import {
 } from "npm:solid-js@1.9.10/dist/solid.js";
 
 export {
-  ErrorBoundary,
-  For,
-  Index,
-  Match,
-  Show,
-  Suspense,
-  SuspenseList,
-  Switch,
   batch,
   createEffect,
   createMemo,
   createRoot,
   createSignal,
+  ErrorBoundary,
+  For,
+  Index,
+  Match,
   onCleanup,
   onMount,
+  Show,
   splitProps,
+  Suspense,
+  SuspenseList,
+  Switch,
   untrack,
 } from "npm:solid-js@1.9.10/dist/solid.js";
 
@@ -76,32 +76,33 @@ export const {
   use,
 } = renderer;
 
-export function createRuntimeApp(renderApp) {
+export function createRuntimeApp(renderApp, options = {}) {
   if (typeof renderApp !== "function") {
     throw new TypeError("runtime app entry must be a function");
   }
 
   const mount = hostCreateElement(ROOT_TAG);
   const dispose = render(() => renderApp(), mount);
+  const css = typeof options.css === "string" ? options.css : null;
 
   return {
     dispatch(event) {
       dispatchRuntimeEvent(mount, event);
-      return renderMountToDocument(mount);
+      return renderMountToDocument(mount, css);
     },
     dispose,
     renderDocument() {
-      return renderMountToDocument(mount);
+      return renderMountToDocument(mount, css);
     },
   };
 }
 
-export function renderToDocument(root) {
+export function renderToDocument(root, options = {}) {
   const nodes = root?.kind === "element" && root.tagName === ROOT_TAG
     ? root.children
     : [root];
   return {
-    css: null,
+    css: typeof options.css === "string" ? options.css : null,
     html: nodes.map((node) => serializeNode(node)).join(""),
   };
 }
@@ -286,13 +287,17 @@ function normalizeRuntimeSelection(selection) {
   const normalizedSelection = {};
   if ("start" in selection) {
     if (!Number.isInteger(selection.start) || selection.start < 0) {
-      throw new TypeError("runtime event selection start must be a non-negative integer");
+      throw new TypeError(
+        "runtime event selection start must be a non-negative integer",
+      );
     }
     normalizedSelection.start = selection.start;
   }
   if ("end" in selection) {
     if (!Number.isInteger(selection.end) || selection.end < 0) {
-      throw new TypeError("runtime event selection end must be a non-negative integer");
+      throw new TypeError(
+        "runtime event selection end must be a non-negative integer",
+      );
     }
     normalizedSelection.end = selection.end;
   }
@@ -308,7 +313,9 @@ function normalizeRuntimeSelection(selection) {
     normalizedSelection.direction = selection.direction;
   }
 
-  return Object.keys(normalizedSelection).length === 0 ? null : normalizedSelection;
+  return Object.keys(normalizedSelection).length === 0
+    ? null
+    : normalizedSelection;
 }
 
 function normalizeRuntimePointer(pointer) {
@@ -363,18 +370,22 @@ function findNodeByShadowId(node, targetId) {
   return null;
 }
 
-function renderMountToDocument(root) {
-  return renderToDocument(root);
+function renderMountToDocument(root, css = null) {
+  return renderToDocument(root, { css });
 }
 
 function applyRuntimeEventState(node, event) {
   if ((event.type === "change" || event.type === "input") && "value" in event) {
     node.value = event.value;
   }
-  if ((event.type === "change" || event.type === "input") && "checked" in event) {
+  if (
+    (event.type === "change" || event.type === "input") && "checked" in event
+  ) {
     node.checked = event.checked;
   }
-  if ((event.type === "change" || event.type === "input") && "selection" in event) {
+  if (
+    (event.type === "change" || event.type === "input") && "selection" in event
+  ) {
     if ("start" in event.selection) {
       node.selectionStart = event.selection.start;
     }
@@ -641,8 +652,10 @@ function createRenderer({
       return insertExpression(parent, accessor, initial, marker);
     }
 
-    createRenderEffect((current) =>
-      insertExpression(parent, accessor(), current, marker), initial);
+    createRenderEffect(
+      (current) => insertExpression(parent, accessor(), current, marker),
+      initial,
+    );
   }
 
   function insertExpression(parent, value, current, marker, unwrapArray) {
@@ -689,7 +702,8 @@ function createRenderer({
       const normalized = [];
       if (normalizeIncomingArray(normalized, value, unwrapArray)) {
         createRenderEffect(() =>
-          current = insertExpression(parent, normalized, current, marker, true));
+          current = insertExpression(parent, normalized, current, marker, true)
+        );
         return () => current;
       }
 
@@ -787,7 +801,9 @@ function createRenderer({
 
       if (currentEnd === currentStart) {
         const anchor = nextEnd < nextLength
-          ? (nextStart ? getNextSibling(next[nextStart - 1]) : next[nextEnd - nextStart])
+          ? (nextStart
+            ? getNextSibling(next[nextStart - 1])
+            : next[nextEnd - nextStart])
           : after;
         while (nextStart < nextEnd) {
           insertNode(parent, next[nextStart], anchor);
@@ -805,7 +821,11 @@ function createRenderer({
         next[nextStart] === current[currentEnd - 1]
       ) {
         const node = getNextSibling(current[--currentEnd]);
-        insertNode(parent, next[nextStart++], getNextSibling(current[currentStart++]));
+        insertNode(
+          parent,
+          next[nextStart++],
+          getNextSibling(current[currentStart++]),
+        );
         insertNode(parent, next[--nextEnd], node);
         current[currentEnd] = next[nextEnd];
       } else {
@@ -911,7 +931,8 @@ function createRenderer({
           node,
           props.children,
           prevProps.children,
-        ));
+        )
+      );
     }
 
     createRenderEffect(() => props.ref && props.ref(node));
@@ -955,7 +976,8 @@ function createRenderer({
     spread(node, accessor, skipChildren) {
       if (typeof accessor === "function") {
         createRenderEffect((current) =>
-          spreadExpression(node, accessor(), current, skipChildren));
+          spreadExpression(node, accessor(), current, skipChildren)
+        );
       } else {
         spreadExpression(node, accessor, undefined, skipChildren);
       }

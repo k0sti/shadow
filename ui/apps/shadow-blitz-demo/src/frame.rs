@@ -1,6 +1,6 @@
-use std::sync::Arc;
+use std::{path::PathBuf, sync::Arc};
 
-use blitz_dom::DocumentConfig;
+use blitz_dom::{DocumentConfig, FontContext};
 use blitz_html::{HtmlDocument, HtmlProvider};
 
 pub const FRAME_HTML: &str = r#"
@@ -20,6 +20,7 @@ pub const FRAME_HTML: &str = r#"
 
       body {
         overflow: hidden;
+        font-family: "Google Sans", "Roboto", "Droid Sans", "Noto Sans", sans-serif;
       }
 
       #shadow-blitz-root {
@@ -91,11 +92,49 @@ pub const FRAME_HTML: &str = r#"
 "#;
 
 pub fn template_document() -> HtmlDocument {
-    HtmlDocument::from_html(
-        FRAME_HTML,
-        DocumentConfig {
-            html_parser_provider: Some(Arc::new(HtmlProvider) as _),
-            ..Default::default()
-        },
-    )
+    let mut config = DocumentConfig {
+        html_parser_provider: Some(Arc::new(HtmlProvider) as _),
+        ..Default::default()
+    };
+    if let Some(font_ctx) = android_font_context() {
+        config.font_ctx = Some(font_ctx);
+    }
+
+    HtmlDocument::from_html(FRAME_HTML, config)
+}
+
+fn android_font_context() -> Option<FontContext> {
+    let font_dirs = android_font_dirs();
+    if font_dirs.is_empty() {
+        return None;
+    }
+
+    let mut font_ctx = FontContext::new();
+    font_ctx.collection.load_fonts_from_paths(&font_dirs);
+    eprintln!(
+        "[shadow-blitz-demo] registered-android-font-dirs count={}",
+        font_dirs.len()
+    );
+    Some(font_ctx)
+}
+
+fn android_font_dirs() -> Vec<PathBuf> {
+    const FONT_DIRS: &[&str] = &[
+        "/product/fonts",
+        "/system/fonts",
+        "/system/product/fonts",
+        "/vendor/fonts",
+        "/odm/fonts",
+    ];
+
+    let mut font_dirs = Vec::new();
+    for dir in FONT_DIRS {
+        let path = PathBuf::from(dir);
+        if path.is_dir() {
+            font_dirs.push(path);
+        }
+    }
+
+    font_dirs.sort();
+    font_dirs
 }
