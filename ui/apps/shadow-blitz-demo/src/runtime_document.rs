@@ -947,10 +947,18 @@ fn runtime_surface_dimension(key: &str, default: u32) -> u32 {
 }
 #[cfg(test)]
 mod tests {
+    use std::sync::{Mutex, MutexGuard};
+
     use super::{RuntimeDocument, RuntimeDocumentPayload};
+
+    fn test_guard() -> MutexGuard<'static, ()> {
+        static TEST_MUTEX: Mutex<()> = Mutex::new(());
+        TEST_MUTEX.lock().expect("lock runtime document test mutex")
+    }
 
     #[test]
     fn runtime_document_renders_initial_payload_into_fixed_frame() {
+        let _guard = test_guard();
         let payload = RuntimeDocumentPayload {
             html: String::from(r#"<section class="screen"><h1>Hello</h1></section>"#),
             css: Some(String::from("body { color: red; }")),
@@ -969,6 +977,7 @@ mod tests {
 
     #[test]
     fn runtime_document_replaces_style_and_root_content() {
+        let _guard = test_guard();
         let mut document = RuntimeDocument::new(RuntimeDocumentPayload {
             html: String::from("<p>Before</p>"),
             css: Some(String::from("body { color: red; }")),
@@ -988,6 +997,7 @@ mod tests {
 
     #[test]
     fn raw_pointer_click_arms_on_press_and_disarms_on_release() {
+        let _guard = test_guard();
         let mut document = RuntimeDocument::new(RuntimeDocumentPayload {
             html: String::from(r#"<button data-shadow-id="counter">Count 1</button>"#),
             css: None,
@@ -1003,6 +1013,7 @@ mod tests {
 
     #[test]
     fn release_target_none_still_clicks_armed_target() {
+        let _guard = test_guard();
         assert_eq!(
             RuntimeDocument::new(RuntimeDocumentPayload {
                 html: String::new(),
@@ -1015,6 +1026,7 @@ mod tests {
 
     #[test]
     fn release_target_mismatch_cancels_click() {
+        let _guard = test_guard();
         assert_eq!(
             RuntimeDocument::new(RuntimeDocumentPayload {
                 html: String::new(),
@@ -1027,6 +1039,7 @@ mod tests {
 
     #[test]
     fn card_target_hits_multiple_points_inside_card() {
+        let _guard = test_guard();
         let mut document = RuntimeDocument::new(RuntimeDocumentPayload {
             html: String::from(
                 r#"<main style="width:100%;height:100%;display:flex;justify-content:center;align-items:center;background:#10293a"><section data-shadow-id="counter" style="display:block;width:280px;height:240px;background:#2fb8ff"></section></main>"#,

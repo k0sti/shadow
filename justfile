@@ -99,6 +99,14 @@ pixel-runtime-app-drm:
 pixel-runtime-app-drm-hold:
 	@scripts/pixel_runtime_app_drm_hold.sh
 
+# Run the GM auto-post runtime demo on the rooted Pixel through the guest compositor DRM path
+pixel-runtime-app-nostr-gm-drm:
+	@scripts/pixel_runtime_app_nostr_gm_drm.sh
+
+# Run the GM auto-post runtime demo on the rooted Pixel, keep the panel seized, and leave Android stopped
+pixel-runtime-app-nostr-gm-drm-hold:
+	@scripts/pixel_runtime_app_nostr_gm_drm_hold.sh
+
 # Restore the Android display stack after a hold-mode rooted takeover run
 pixel-restore-android:
 	@scripts/pixel_restore_android.sh

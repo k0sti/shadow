@@ -1,5 +1,25 @@
 #!/usr/bin/env bash
 
+copy_runtime_optional_file() {
+  local source_path dest_path
+  source_path="$1"
+  dest_path="$2"
+
+  [[ -f "$source_path" ]] || return 0
+  mkdir -p "$(dirname "$dest_path")"
+  cp "$source_path" "$dest_path"
+}
+
+copy_runtime_optional_lib() {
+  local name bundle_lib_dir lib_source_path
+  name="$1"
+  bundle_lib_dir="$2"
+
+  lib_source_path="$(find_runtime_file_in_closure "$name" 2>/dev/null || true)"
+  [[ -n "$lib_source_path" ]] || return 0
+  cp "$lib_source_path" "$bundle_lib_dir/$name"
+}
+
 binary_interpreter() {
   local binary
   binary="$1"
@@ -30,20 +50,22 @@ find_runtime_file_in_closure() {
 
 stage_deno_core_linux_bundle() {
   local package_ref out_link bundle_dir binary_name
-  local binary_host_path modules_host_dir bundle_lib_dir file_output
+  local binary_host_path modules_host_dir bundle_lib_dir bundle_etc_dir file_output
   local interpreter_path loader_name needed_lib lib_source_path
+  local dns_server
 
   package_ref="$1"
   out_link="$2"
   bundle_dir="$3"
   binary_name="${4:-deno-core-smoke}"
   bundle_lib_dir="$bundle_dir/lib"
+  bundle_etc_dir="$bundle_dir/etc"
 
   mkdir -p "$(dirname "$out_link")"
   rm -f "$out_link"
   chmod -R u+w "$bundle_dir" 2>/dev/null || true
   rm -rf "$bundle_dir"
-  mkdir -p "$bundle_lib_dir"
+  mkdir -p "$bundle_lib_dir" "$bundle_etc_dir"
 
   nix build --accept-flake-config "$package_ref" --out-link "$out_link"
 
@@ -80,6 +102,33 @@ stage_deno_core_linux_bundle() {
     lib_source_path="$(find_runtime_file_in_closure "$needed_lib")"
     cp "$lib_source_path" "$bundle_lib_dir/$needed_lib"
   done < <(binary_needed_libs "$binary_host_path")
+
+  copy_runtime_optional_lib "libnss_dns.so.2" "$bundle_lib_dir"
+  copy_runtime_optional_lib "libnss_files.so.2" "$bundle_lib_dir"
+  copy_runtime_optional_lib "libresolv.so.2" "$bundle_lib_dir"
+
+  cat >"$bundle_etc_dir/nsswitch.conf" <<'EOF'
+hosts: files dns
+passwd: files
+group: files
+shadow: files
+networks: files
+protocols: files
+services: files
+ethers: files
+rpc: files
+EOF
+
+  cat >"$bundle_etc_dir/hosts" <<'EOF'
+127.0.0.1 localhost
+::1 localhost
+EOF
+
+  : "${PIXEL_RUNTIME_DNS_SERVERS:=1.1.1.1 8.8.8.8}"
+  : >"$bundle_etc_dir/resolv.conf"
+  for dns_server in $PIXEL_RUNTIME_DNS_SERVERS; do
+    printf 'nameserver %s\n' "$dns_server" >>"$bundle_etc_dir/resolv.conf"
+  done
 
   chmod 0755 "$bundle_dir/$binary_name" "$bundle_lib_dir/$loader_name"
 
