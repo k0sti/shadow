@@ -246,27 +246,12 @@ impl ShadowGuestCompositor {
 
         let mut command = std::process::Command::new(&client_path);
         command.env("XDG_RUNTIME_DIR", runtime_dir);
-        let mut has_explicit_blitz_mode = std::env::var_os("SHADOW_BLITZ_DEMO_MODE").is_some();
         if let Some(value) = std::env::var("SHADOW_GUEST_CLIENT_ENV").ok() {
             for assignment in value.split_whitespace() {
                 if let Some((key, env_value)) = assignment.split_once('=') {
                     if !key.is_empty() {
-                        has_explicit_blitz_mode |= key == "SHADOW_BLITZ_DEMO_MODE";
                         command.env(key, env_value);
                     }
-                }
-            }
-        }
-        if !has_explicit_blitz_mode {
-            match std::env::var("SHADOW_GUEST_CLIENT_MODE").ok().as_deref() {
-                Some("runtime") => {
-                    command.env("SHADOW_BLITZ_DEMO_MODE", "runtime");
-                }
-                Some("static") | None => {}
-                Some(other) => {
-                    tracing::warn!(
-                        "[shadow-guest-compositor] ignoring unknown SHADOW_GUEST_CLIENT_MODE={other}"
-                    );
                 }
             }
         }

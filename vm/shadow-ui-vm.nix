@@ -230,7 +230,6 @@ PY
               "export LIBGL_DRIVERS_PATH=\"$LIBGL_DRIVERS_PATH\"" \
               "export RUST_BACKTRACE=\"$RUST_BACKTRACE\"" \
               "export XDG_RUNTIME_DIR=\"$XDG_RUNTIME_DIR\"" \
-              "export SHADOW_BLITZ_DEMO_MODE=\"$SHADOW_BLITZ_DEMO_MODE\"" \
               "export SHADOW_RUNTIME_APP_BUNDLE_PATH=\"$SHADOW_RUNTIME_APP_BUNDLE_PATH\"" \
               "export SHADOW_RUNTIME_HOST_BINARY_PATH=\"$SHADOW_RUNTIME_HOST_BINARY_PATH\"" \
               "export WAYLAND_DISPLAY=\"$nested_wayland\"" \

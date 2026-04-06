@@ -115,7 +115,9 @@ fn detect_guest_ui_mode() -> Result<(), String> {
     match env::var("SHADOW_SESSION_MODE").ok().as_deref() {
         Some("guest-ui") => Ok(()),
         Some(other) => Err(format!("unknown SHADOW_SESSION_MODE={other}")),
-        None if path_exists("/shadow-compositor-guest") && path_exists(GUEST_RUNTIME_CLIENT_BIN) => {
+        None if path_exists("/shadow-compositor-guest")
+            && path_exists(GUEST_RUNTIME_CLIENT_BIN) =>
+        {
             Ok(())
         }
         None => Err("could not detect a guest UI session".into()),
@@ -156,12 +158,6 @@ fn run_guest_ui() -> ! {
                 "shadow_compositor_guest=info,shadow_blitz_demo=info,smithay=warn".into()
             }),
         );
-
-    if let Some(value) = env::var_os("SHADOW_GUEST_CLIENT_MODE") {
-        command.env("SHADOW_GUEST_CLIENT_MODE", value);
-    } else if guest_client == GUEST_RUNTIME_CLIENT_BIN {
-        command.env("SHADOW_GUEST_CLIENT_MODE", "runtime");
-    }
 
     if let Some(value) = env::var_os("SHADOW_GUEST_COMPOSITOR_ENABLE_DRM") {
         command.env("SHADOW_GUEST_COMPOSITOR_ENABLE_DRM", value);

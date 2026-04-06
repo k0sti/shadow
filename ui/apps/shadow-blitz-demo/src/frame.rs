@@ -9,7 +9,7 @@ pub const FRAME_HTML: &str = r#"
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Shadow Blitz Demo</title>
+    <title>Shadow Counter</title>
     <style>
       html, body {
         margin: 0;

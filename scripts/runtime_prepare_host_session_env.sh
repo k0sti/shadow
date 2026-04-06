@@ -20,7 +20,6 @@ if rewrite_from and rewrite_to and bundle_path.startswith(rewrite_from):
     bundle_path = rewrite_to + bundle_path[len(rewrite_from):]
 
 exports = {
-    "SHADOW_BLITZ_DEMO_MODE": "runtime",
     "SHADOW_RUNTIME_APP_BUNDLE_PATH": bundle_path,
     "SHADOW_RUNTIME_HOST_BINARY_PATH": data["runtimeHostBinaryPath"],
 }

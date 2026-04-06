@@ -21,80 +21,6 @@ const ROOT_SELECTOR: &str = "#shadow-blitz-root";
 const DEBUG_SELECTOR: &str = "#shadow-blitz-debug";
 const DEFAULT_SURFACE_WIDTH: u32 = 384;
 const DEFAULT_SURFACE_HEIGHT: u32 = 720;
-const SAMPLE_RUNTIME_HTML: &str = r#"
-<section class="runtime-card">
-  <p class="runtime-eyebrow">Shadow Runtime</p>
-  <h1>First Host Frame</h1>
-  <p class="runtime-lede">
-    Solid-style TSX rendered on the host and handed into a persistent Blitz frame.
-  </p>
-  <button class="runtime-action" data-shadow-id="counter">Count 1</button>
-</section>
-"#;
-const SAMPLE_RUNTIME_CSS: &str = r#"
-:root {
-  color-scheme: dark;
-  --bg0: #06131a;
-  --bg1: #0e2430;
-  --card: rgba(9, 19, 28, 0.88);
-  --border: rgba(120, 196, 255, 0.28);
-  --text: #f3fbff;
-  --muted: #bfd5df;
-  --accent: #79d4ff;
-  --accent-strong: #2fb8ff;
-}
-* { box-sizing: border-box; }
-html, body { margin: 0; min-height: 100%; }
-body {
-  min-height: 100vh;
-  background:
-    radial-gradient(circle at top, rgba(47, 184, 255, 0.18), transparent 34%),
-    linear-gradient(180deg, var(--bg0), var(--bg1));
-  color: var(--text);
-  font: 500 16px/1.5 "Google Sans", "Roboto", "Droid Sans", "Noto Sans", sans-serif;
-}
-#shadow-blitz-root {
-  min-height: 100vh;
-  display: grid;
-  place-items: center;
-  padding: 24px;
-}
-.runtime-card {
-  width: min(100%, 320px);
-  padding: 24px;
-  border: 1px solid var(--border);
-  border-radius: 28px;
-  background: var(--card);
-  box-shadow: 0 24px 72px rgba(0, 0, 0, 0.35);
-}
-.runtime-eyebrow {
-  margin: 0 0 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.18em;
-  color: var(--accent);
-  font-size: 12px;
-}
-.runtime-card h1 {
-  margin: 0;
-  font-size: 38px;
-  line-height: 0.96;
-  letter-spacing: -0.05em;
-}
-.runtime-lede {
-  margin: 14px 0 24px;
-  color: var(--muted);
-}
-.runtime-action {
-  border: none;
-  border-radius: 999px;
-  padding: 13px 18px;
-  background: linear-gradient(135deg, var(--accent), var(--accent-strong));
-  color: #04212d;
-  font: inherit;
-  font-weight: 700;
-}
-"#;
-
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 pub struct RuntimeDocumentPayload {
     pub html: String,
@@ -125,11 +51,7 @@ pub struct RuntimeDocument {
 }
 
 impl RuntimeDocument {
-    pub fn new(payload: RuntimeDocumentPayload) -> Self {
-        Self::with_runtime(payload, None)
-    }
-
-    pub fn from_env_or_sample() -> Self {
+    pub fn from_env() -> Self {
         match RuntimeSession::from_env() {
             Ok(Some(mut runtime_session)) => {
                 let payload = runtime_session
@@ -138,10 +60,9 @@ impl RuntimeDocument {
                 runtime_log("runtime-session-ready");
                 Self::with_runtime(payload, Some(runtime_session))
             }
-            Ok(None) => {
-                runtime_log("runtime-sample-mode");
-                Self::new(Self::sample_payload())
-            }
+            Ok(None) => panic!(
+                "configure runtime session: missing SHADOW_RUNTIME_APP_BUNDLE_PATH and SHADOW_RUNTIME_HOST_BINARY_PATH"
+            ),
             Err(error) => panic!("configure runtime session: {error}"),
         }
     }
@@ -187,13 +108,6 @@ impl RuntimeDocument {
         }
         runtime_log("runtime-document-ready");
         document
-    }
-
-    pub fn sample_payload() -> RuntimeDocumentPayload {
-        RuntimeDocumentPayload {
-            html: String::from(SAMPLE_RUNTIME_HTML),
-            css: Some(String::from(SAMPLE_RUNTIME_CSS)),
-        }
     }
 
     pub fn should_exit(&self) -> bool {
@@ -963,7 +877,7 @@ mod tests {
             html: String::from(r#"<section class="screen"><h1>Hello</h1></section>"#),
             css: Some(String::from("body { color: red; }")),
         };
-        let document = RuntimeDocument::new(payload.clone());
+        let document = RuntimeDocument::with_runtime(payload.clone(), None);
 
         assert_eq!(
             document.node_text_content("#shadow-blitz-style"),
@@ -978,10 +892,13 @@ mod tests {
     #[test]
     fn runtime_document_replaces_style_and_root_content() {
         let _guard = test_guard();
-        let mut document = RuntimeDocument::new(RuntimeDocumentPayload {
-            html: String::from("<p>Before</p>"),
-            css: Some(String::from("body { color: red; }")),
-        });
+        let mut document = RuntimeDocument::with_runtime(
+            RuntimeDocumentPayload {
+                html: String::from("<p>Before</p>"),
+                css: Some(String::from("body { color: red; }")),
+            },
+            None,
+        );
 
         document.replace_document(RuntimeDocumentPayload {
             html: String::from(r#"<article data-app="next">After</article>"#),
@@ -998,10 +915,13 @@ mod tests {
     #[test]
     fn raw_pointer_click_arms_on_press_and_disarms_on_release() {
         let _guard = test_guard();
-        let mut document = RuntimeDocument::new(RuntimeDocumentPayload {
-            html: String::from(r#"<button data-shadow-id="counter">Count 1</button>"#),
-            css: None,
-        });
+        let mut document = RuntimeDocument::with_runtime(
+            RuntimeDocumentPayload {
+                html: String::from(r#"<button data-shadow-id="counter">Count 1</button>"#),
+                css: None,
+            },
+            None,
+        );
         let (client_x, client_y) = document.point_for_target("counter");
 
         document.handle_raw_pointer_button(true, true, client_x, client_y);
@@ -1015,10 +935,13 @@ mod tests {
     fn release_target_none_still_clicks_armed_target() {
         let _guard = test_guard();
         assert_eq!(
-            RuntimeDocument::new(RuntimeDocumentPayload {
-                html: String::new(),
-                css: None,
-            })
+            RuntimeDocument::with_runtime(
+                RuntimeDocumentPayload {
+                    html: String::new(),
+                    css: None,
+                },
+                None
+            )
             .resolve_click_target(Some(String::from("counter")), None),
             Some(String::from("counter"))
         );
@@ -1028,10 +951,13 @@ mod tests {
     fn release_target_mismatch_cancels_click() {
         let _guard = test_guard();
         assert_eq!(
-            RuntimeDocument::new(RuntimeDocumentPayload {
-                html: String::new(),
-                css: None,
-            })
+            RuntimeDocument::with_runtime(
+                RuntimeDocumentPayload {
+                    html: String::new(),
+                    css: None,
+                },
+                None
+            )
             .resolve_click_target(Some(String::from("counter")), Some(String::from("other"))),
             None
         );
@@ -1040,12 +966,15 @@ mod tests {
     #[test]
     fn card_target_hits_multiple_points_inside_card() {
         let _guard = test_guard();
-        let mut document = RuntimeDocument::new(RuntimeDocumentPayload {
-            html: String::from(
-                r#"<main style="width:100%;height:100%;display:flex;justify-content:center;align-items:center;background:#10293a"><section data-shadow-id="counter" style="display:block;width:280px;height:240px;background:#2fb8ff"></section></main>"#,
-            ),
-            css: None,
-        });
+        let mut document = RuntimeDocument::with_runtime(
+            RuntimeDocumentPayload {
+                html: String::from(
+                    r#"<main style="width:100%;height:100%;display:flex;justify-content:center;align-items:center;background:#10293a"><section data-shadow-id="counter" style="display:block;width:280px;height:240px;background:#2fb8ff"></section></main>"#,
+                ),
+                css: None,
+            },
+            None,
+        );
 
         for (x, y) in [(120.0, 260.0), (192.0, 360.0), (264.0, 460.0)] {
             assert_eq!(document.target_at(x, y).as_deref(), Some("counter"));

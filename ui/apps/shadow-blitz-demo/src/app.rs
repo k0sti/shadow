@@ -25,7 +25,6 @@ use winit::{
     window::{WindowAttributes, WindowId},
 };
 
-use crate::document::StaticDocument;
 use crate::log::runtime_log;
 use crate::runtime_document::RuntimeDocument;
 
@@ -33,72 +32,24 @@ use crate::runtime_document::RuntimeDocument;
 use winit::platform::wayland::WindowAttributesWayland;
 
 #[cfg(target_os = "linux")]
-const BLITZ_DEMO_WAYLAND_APP_ID: &str = "dev.shadow.blitz";
-#[cfg(target_os = "linux")]
-const RUNTIME_DEMO_WAYLAND_APP_ID: &str = "dev.shadow.counter";
+const COUNTER_WAYLAND_APP_ID: &str = "dev.shadow.counter";
+const APP_TITLE: &str = "Shadow Counter";
 const DEFAULT_SURFACE_WIDTH: u32 = 384;
 const DEFAULT_SURFACE_HEIGHT: u32 = 720;
 
 pub fn run() {
-    let demo_mode = DemoMode::from_env();
     let event_loop = create_default_event_loop();
     let (proxy, receiver) = BlitzShellProxy::new(event_loop.create_proxy());
     let window = WindowConfig::with_attributes(
-        demo_mode.document(),
+        Box::new(RuntimeDocument::from_env()),
         WindowRenderer::new(),
-        window_attributes(demo_mode),
+        window_attributes(),
     );
-    let application = BlitzApplication::new(proxy, receiver, window, demo_mode);
+    let application = BlitzApplication::new(proxy, receiver, window);
     event_loop.run_app(application).expect("run blitz app");
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum DemoMode {
-    Static,
-    Runtime,
-}
-
-impl DemoMode {
-    fn from_env() -> Self {
-        match env::var("SHADOW_BLITZ_DEMO_MODE").ok().as_deref() {
-            Some("runtime") => Self::Runtime,
-            _ => Self::Static,
-        }
-    }
-
-    fn document(self) -> Box<dyn blitz_dom::Document> {
-        match self {
-            Self::Static => Box::new(StaticDocument::new()),
-            Self::Runtime => Box::new(RuntimeDocument::from_env_or_sample()),
-        }
-    }
-
-    fn title(self) -> &'static str {
-        match self {
-            Self::Static => "Shadow Blitz Demo",
-            Self::Runtime => "Shadow Counter",
-        }
-    }
-
-    #[cfg(target_os = "linux")]
-    fn wayland_app_id(self) -> &'static str {
-        match self {
-            Self::Static => BLITZ_DEMO_WAYLAND_APP_ID,
-            Self::Runtime => RUNTIME_DEMO_WAYLAND_APP_ID,
-        }
-    }
-
-    #[cfg(target_os = "linux")]
-    fn wayland_instance_name(self) -> &'static str {
-        match self {
-            Self::Static => "shadow-blitz-demo",
-            Self::Runtime => "shadow-blitz-demo",
-        }
-    }
-}
-
 struct BlitzApplication {
-    demo_mode: DemoMode,
     proxy: BlitzShellProxy,
     event_queue: Receiver<BlitzShellEvent>,
     pending_window: Option<WindowConfig<WindowRenderer>>,
@@ -113,10 +64,8 @@ impl BlitzApplication {
         proxy: BlitzShellProxy,
         event_queue: Receiver<BlitzShellEvent>,
         window: WindowConfig<WindowRenderer>,
-        demo_mode: DemoMode,
     ) -> Self {
         Self {
-            demo_mode,
             proxy,
             event_queue,
             pending_window: Some(window),
@@ -140,21 +89,21 @@ impl BlitzApplication {
             BlitzShellEvent::Poll { window_id } if window.window_id() == window_id => {
                 if window.poll() {
                     runtime_log(format!("poll-changed window={window_id:?}"));
-                    redraw_window(self.demo_mode, window, "poll");
+                    redraw_window(window, "poll");
                 }
             }
             BlitzShellEvent::RequestRedraw { doc_id } if window.doc.id() == doc_id => {
-                redraw_window(self.demo_mode, window, "doc");
+                redraw_window(window, "doc");
             }
             BlitzShellEvent::Embedder(data) => {
-                if handle_runtime_embedder_event(self.demo_mode, window, data) {
-                    redraw_window(self.demo_mode, window, "embedder");
+                if handle_runtime_embedder_event(window, data) {
+                    redraw_window(window, "embedder");
                 }
             }
             _ => {}
         }
 
-        if document_should_exit(self.demo_mode, window) {
+        if document_should_exit(window) {
             self.window.take();
             event_loop.exit();
         }
@@ -182,26 +131,12 @@ impl ApplicationHandler for BlitzApplication {
         if let Some(config) = self.pending_window.take() {
             runtime_log("init-pending-window");
             runtime_log("view-init-start");
-            let mut window = View::init(config, event_loop, &self.proxy);
-            runtime_log(format!("view-init-done window={:?}", window.window_id()));
+            let window = View::init(config, event_loop, &self.proxy);
             let window_id = window.window_id();
-            if self.demo_mode == DemoMode::Runtime {
-                self.runtime_resume_pending = true;
-                runtime_log(format!("window-resume-deferred window={window_id:?}"));
-                self.window = Some(window);
-            } else {
-                runtime_log(format!("window-resume-start window={window_id:?}"));
-                window.resume();
-                runtime_log(format!("window-resume-done window={window_id:?}"));
-                self.window = Some(window);
-                self.ensure_runtime_poll_thread(window_id);
-                self.ensure_runtime_touch_signal_thread();
-                self.proxy.send_event(BlitzShellEvent::Poll { window_id });
-                runtime_log(format!(
-                    "request-poll source=can-create-new window={window_id:?}"
-                ));
-                runtime_log(format!("window-ready window={window_id:?}"));
-            }
+            runtime_log(format!("view-init-done window={window_id:?}"));
+            self.runtime_resume_pending = true;
+            runtime_log(format!("window-resume-deferred window={window_id:?}"));
+            self.window = Some(window);
         }
     }
 
@@ -236,8 +171,8 @@ impl ApplicationHandler for BlitzApplication {
 
         if let Some(window) = self.window.as_mut() {
             window.handle_winit_event(event);
-            handle_runtime_pointer_button(self.demo_mode, window, runtime_pointer_button);
-            request_runtime_redraw(self.demo_mode, window);
+            handle_runtime_pointer_button(window, runtime_pointer_button);
+            request_runtime_redraw(window);
         }
 
         self.proxy.send_event(BlitzShellEvent::Poll { window_id });
@@ -252,7 +187,7 @@ impl ApplicationHandler for BlitzApplication {
 
 impl BlitzApplication {
     fn ensure_runtime_poll_thread(&mut self, window_id: WindowId) {
-        if self.demo_mode != DemoMode::Runtime || self.runtime_poll_thread_started {
+        if self.runtime_poll_thread_started {
             return;
         }
 
@@ -271,7 +206,7 @@ impl BlitzApplication {
     }
 
     fn ensure_runtime_touch_signal_thread(&mut self) {
-        if self.demo_mode != DemoMode::Runtime || self.runtime_touch_signal_thread_started {
+        if self.runtime_touch_signal_thread_started {
             return;
         }
         if env::var_os("SHADOW_BLITZ_TOUCH_SIGNAL_PATH").is_none() {
@@ -297,7 +232,7 @@ impl BlitzApplication {
     }
 
     fn maybe_resume_runtime_window(&mut self, window_id: WindowId, event: &WindowEvent) {
-        if self.demo_mode != DemoMode::Runtime || !self.runtime_resume_pending {
+        if !self.runtime_resume_pending {
             return;
         }
         let Some(window) = self.window.as_ref() else {
@@ -324,7 +259,7 @@ impl BlitzApplication {
             "post-resume-poll window={window_id:?} changed={changed}"
         ));
         if changed {
-            redraw_window(self.demo_mode, window, "post-resume-poll");
+            redraw_window(window, "post-resume-poll");
         }
         self.proxy.send_event(BlitzShellEvent::Poll { window_id });
         runtime_log(format!(
@@ -371,10 +306,10 @@ enum RuntimeEmbedderEvent {
     TouchSignalTick,
 }
 
-fn window_attributes(demo_mode: DemoMode) -> WindowAttributes {
+fn window_attributes() -> WindowAttributes {
     let (surface_width, surface_height) = surface_size_from_env();
     let attributes = WindowAttributes::default()
-        .with_title(demo_mode.title())
+        .with_title(APP_TITLE)
         .with_resizable(false)
         .with_surface_size(LogicalSize::new(
             surface_width as f64,
@@ -383,10 +318,8 @@ fn window_attributes(demo_mode: DemoMode) -> WindowAttributes {
 
     #[cfg(target_os = "linux")]
     {
-        let wayland_attributes = WindowAttributesWayland::default().with_name(
-            demo_mode.wayland_app_id(),
-            demo_mode.wayland_instance_name(),
-        );
+        let wayland_attributes = WindowAttributesWayland::default()
+            .with_name(COUNTER_WAYLAND_APP_ID, "shadow-blitz-demo");
         return attributes.with_platform_attributes(Box::new(wayland_attributes));
     }
 
@@ -409,11 +342,8 @@ fn surface_dimension_from_env(key: &str, default: u32) -> u32 {
         .unwrap_or(default)
 }
 
-fn document_should_exit(demo_mode: DemoMode, window: &mut View<WindowRenderer>) -> bool {
-    match demo_mode {
-        DemoMode::Static => window.downcast_doc_mut::<StaticDocument>().should_exit(),
-        DemoMode::Runtime => window.downcast_doc_mut::<RuntimeDocument>().should_exit(),
-    }
+fn document_should_exit(window: &mut View<WindowRenderer>) -> bool {
+    window.downcast_doc_mut::<RuntimeDocument>().should_exit()
 }
 
 fn log_pointer_window_event(event: &WindowEvent) {
@@ -493,12 +423,10 @@ fn runtime_pointer_button_event(
 }
 
 fn handle_runtime_pointer_button(
-    demo_mode: DemoMode,
     window: &mut View<WindowRenderer>,
     event: Option<RuntimePointerButtonEvent>,
 ) {
-    if demo_mode != DemoMode::Runtime || env::var_os("SHADOW_BLITZ_RAW_POINTER_FALLBACK").is_none()
-    {
+    if env::var_os("SHADOW_BLITZ_RAW_POINTER_FALLBACK").is_none() {
         return;
     }
     let Some(event) = event else {
@@ -515,11 +443,7 @@ fn handle_runtime_pointer_button(
         );
 }
 
-fn request_runtime_redraw(demo_mode: DemoMode, window: &mut View<WindowRenderer>) {
-    if demo_mode != DemoMode::Runtime {
-        return;
-    }
-
+fn request_runtime_redraw(window: &mut View<WindowRenderer>) {
     let redraw_requested = window
         .downcast_doc_mut::<RuntimeDocument>()
         .take_redraw_requested();
@@ -527,37 +451,22 @@ fn request_runtime_redraw(demo_mode: DemoMode, window: &mut View<WindowRenderer>
         return;
     }
 
-    redraw_window(demo_mode, window, "runtime-dispatch");
+    redraw_window(window, "runtime-dispatch");
 }
 
-fn redraw_window(demo_mode: DemoMode, window: &mut View<WindowRenderer>, source: &str) {
-    if demo_mode == DemoMode::Runtime {
-        runtime_log(format!(
-            "redraw-now source={} window={:?}",
-            source,
-            window.window_id()
-        ));
-        window.redraw();
-        return;
-    }
-
+fn redraw_window(window: &mut View<WindowRenderer>, source: &str) {
     runtime_log(format!(
-        "request-redraw source={} window={:?}",
+        "redraw-now source={} window={:?}",
         source,
         window.window_id()
     ));
-    window.request_redraw();
+    window.redraw();
 }
 
 fn handle_runtime_embedder_event(
-    demo_mode: DemoMode,
     window: &mut View<WindowRenderer>,
     data: Arc<dyn std::any::Any + Send + Sync>,
 ) -> bool {
-    if demo_mode != DemoMode::Runtime {
-        return false;
-    }
-
     let Some(event) = data.downcast_ref::<RuntimeEmbedderEvent>() else {
         return false;
     };

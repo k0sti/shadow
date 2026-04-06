@@ -35,7 +35,6 @@ runtime_guest_env="$(printf '%s\n' "$runtime_guest_env" | tr '\n' ' ' | sed 's/[
 
 runtime_session_env=$(
   cat <<EOF
-SHADOW_GUEST_CLIENT_MODE=runtime
 SHADOW_GUEST_TOUCH_SIGNAL_PATH=$touch_signal_path
 EOF
 )

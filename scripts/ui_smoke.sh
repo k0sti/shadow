@@ -83,9 +83,12 @@ sync_remote_tree() {
     flake.nix \
     flake.lock \
     justfile \
+    runtime \
+    rust \
     scripts \
+    third_party \
     ui \
-    | remote_ssh "mkdir -p $(printf '%q' "$dir") && rm -rf $(printf '%q' "$dir/scripts") $(printf '%q' "$dir/ui") $(printf '%q' "$dir/flake.nix") $(printf '%q' "$dir/flake.lock") $(printf '%q' "$dir/justfile") && tar -xf - -C $(printf '%q' "$dir")"
+    | remote_ssh "mkdir -p $(printf '%q' "$dir") && rm -rf $(printf '%q' "$dir/runtime") $(printf '%q' "$dir/rust") $(printf '%q' "$dir/scripts") $(printf '%q' "$dir/third_party") $(printf '%q' "$dir/ui") $(printf '%q' "$dir/flake.nix") $(printf '%q' "$dir/flake.lock") $(printf '%q' "$dir/justfile") && tar -xf - -C $(printf '%q' "$dir")"
 }
 
 dump_logs() {
@@ -98,10 +101,11 @@ dump_logs() {
 }
 
 run_local_linux_smoke() {
-  local tmpdir runtime_dir compositor_log compositor_pid start now
+  local tmpdir runtime_dir runtime_env compositor_log compositor_pid start now
 
   tmpdir="$(mktemp -d "${TMPDIR:-/tmp}/shadow-ui-smoke.XXXXXX")"
   runtime_dir="$tmpdir/xdg-runtime"
+  runtime_env="$tmpdir/runtime-host-session-env.sh"
   UI_SMOKE_TMPDIR="$tmpdir"
   runtime_dir="$tmpdir/runtime"
   mkdir -p "$runtime_dir"
@@ -130,6 +134,8 @@ run_local_linux_smoke() {
     export SHADOW_COMPOSITOR_AUTO_LAUNCH=1
     export XDG_RUNTIME_DIR="$runtime_dir"
     export RUST_LOG="${RUST_LOG:-shadow_compositor=info,smithay=warn}"
+    scripts/runtime_prepare_host_session_env.sh >"$runtime_env"
+    source "$runtime_env"
     cargo build --manifest-path ui/Cargo.toml -p shadow-compositor -p shadow-blitz-demo
     cargo run --manifest-path ui/Cargo.toml -p shadow-compositor
   ) >"$compositor_log" 2>&1 &

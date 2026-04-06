@@ -178,10 +178,11 @@ for line in cmd("systemctl", "show", "shadow-ui-smoke.service", "-p", "ActiveSta
 
 process_lines = []
 for line in cmd("ps", "-eo", "pid=,comm=,args=")[1].splitlines():
-        if any(name in line for name in ("shadow-compositor", "shadow-blitz-demo", "cargo run")):
-        if "python3 - <<'PY'" in line:
-            continue
-        process_lines.append(line.strip())
+    if not any(name in line for name in ("shadow-compositor", "shadow-blitz-demo", "cargo run")):
+        continue
+    if "python3 - <<'PY'" in line:
+        continue
+    process_lines.append(line.strip())
 
 log_tail = []
 if session_log.exists():
