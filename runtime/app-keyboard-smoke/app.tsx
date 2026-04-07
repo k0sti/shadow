@@ -19,7 +19,7 @@ body {
   min-height: 100vh;
   background: linear-gradient(180deg, #020617 0%, #0f172a 45%, #134e4a 100%);
   color: #e2e8f0;
-  font: 500 16px/1.45 "Google Sans", "Roboto", "Droid Sans", "Noto Sans", sans-serif;
+  font: 500 16px/1.45 "Google Sans", "Roboto", "Droid Sans", "Noto Sans", "DejaVu Sans", sans-serif;
 }
 
 #shadow-blitz-root {
@@ -111,7 +111,7 @@ body {
   background: rgba(15, 23, 42, 0.72);
   border: 1px solid rgba(148, 163, 184, 0.16);
   color: #e2e8f0;
-  font-family: "Droid Sans Mono", "Cutive Mono", monospace;
+  font-family: "Droid Sans Mono", "DejaVu Sans Mono", "Cutive Mono", monospace;
   font-size: 18px;
   line-height: 1.4;
 }

@@ -26,6 +26,8 @@ pub struct SoftbufferWindowRenderer<Renderer: ImageRenderer> {
     window_handle: Option<Arc<dyn WindowHandle>>,
     renderer: Renderer,
     buffer: Vec<u8>,
+    width: u32,
+    height: u32,
 }
 
 impl<Renderer: ImageRenderer> SoftbufferWindowRenderer<Renderer> {
@@ -42,6 +44,8 @@ impl<Renderer: ImageRenderer> SoftbufferWindowRenderer<Renderer> {
             window_handle: None,
             renderer,
             buffer: Vec::new(),
+            width: 1,
+            height: 1,
         }
     }
 }
@@ -110,6 +114,8 @@ impl<Renderer: ImageRenderer> WindowRenderer for SoftbufferWindowRenderer<Render
                 start.elapsed().as_millis()
             );
             self.renderer.resize(clamped_width, clamped_height);
+            self.width = clamped_width;
+            self.height = clamped_height;
             eprintln!(
                 "[shadow-softbuffer +{:>6}ms] renderer-resize-done",
                 start.elapsed().as_millis()
@@ -149,12 +155,22 @@ impl<Renderer: ImageRenderer> WindowRenderer for SoftbufferWindowRenderer<Render
         assert_eq!(chunks.len(), out.len());
         assert_eq!(remainder.len(), 0);
 
-        for (&src, dest) in chunks.iter().zip(out.iter_mut()) {
-            let [r, g, b, a] = src;
-            if a == 0 {
-                *dest = u32::MAX;
-            } else {
-                *dest = (r as u32) << 16 | (g as u32) << 8 | b as u32;
+        let width = self.width as usize;
+        let height = self.height as usize;
+        assert_eq!(width * height, out.len());
+
+        for y in 0..height {
+            let src_row = height - 1 - y;
+            let src_start = src_row * width;
+            let dest_start = y * width;
+            for x in 0..width {
+                let [r, g, b, a] = chunks[src_start + x];
+                let dest = &mut out[dest_start + x];
+                if a == 0 {
+                    *dest = u32::MAX;
+                } else {
+                    *dest = (r as u32) << 16 | (g as u32) << 8 | b as u32;
+                }
             }
         }
         eprintln!(

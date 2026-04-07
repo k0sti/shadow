@@ -36,6 +36,33 @@ type StatusState =
 
 const DEFAULT_RELAY_URLS = ["wss://relay.primal.net/", "wss://relay.damus.io/"];
 const DEFAULT_LIMIT = 12;
+const SHELL_STYLE =
+  'min-height:100vh;display:flex;flex-direction:column;padding:24px;gap:20px;background:radial-gradient(circle at top, rgba(56, 189, 248, 0.16), transparent 36%),linear-gradient(180deg, #020617 0%, #082032 45%, #0f172a 100%);color:#e2e8f0;font:500 16px/1.45 "Google Sans","Roboto","Droid Sans","Noto Sans","DejaVu Sans",sans-serif;box-sizing:border-box';
+const HERO_STYLE =
+  "display:flex;flex-direction:column;gap:18px;padding:28px 26px;border-radius:34px;background:rgba(2, 6, 23, 0.74);border:1px solid rgba(56, 189, 248, 0.18);box-shadow:0 28px 80px rgba(0, 0, 0, 0.3)";
+const EYEBROW_STYLE =
+  "margin:0;color:#7dd3fc;font-size:13px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase";
+const TITLE_STYLE =
+  "margin:0;color:#f8fafc;font-size:56px;line-height:0.94;letter-spacing:-0.05em";
+const SUBTITLE_STYLE = "margin:0;color:#bfdbfe;font-size:24px;line-height:1.3";
+const TOOLBAR_STYLE = "display:flex;flex-wrap:wrap;gap:14px";
+const COMPOSE_LABEL_STYLE =
+  "margin:0;color:#93c5fd;font-size:18px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em";
+const COMPOSE_INPUT_STYLE =
+  'width:100%;min-height:88px;border-radius:24px;border:1px solid rgba(148, 163, 184, 0.25);background:rgba(15, 23, 42, 0.9);color:#f8fafc;padding:22px 24px;font:inherit;font-size:28px;box-sizing:border-box';
+const COMPOSE_META_STYLE =
+  "display:flex;flex-wrap:wrap;gap:16px;color:#94a3b8;font-size:18px";
+const COMPOSE_HINT_STYLE = "margin:0;color:#7dd3fc;font-size:18px;line-height:1.35";
+const FEED_STYLE = "display:flex;flex-direction:column;gap:16px";
+const FEED_EMPTY_STYLE =
+  "margin:0;padding:28px 22px;border-radius:28px;background:rgba(2, 6, 23, 0.68);color:#bfdbfe;font-size:24px";
+const NOTE_STYLE =
+  "display:flex;flex-direction:column;gap:12px;padding:24px;border-radius:28px;background:rgba(248, 250, 252, 0.96);color:#0f172a;box-shadow:0 18px 44px rgba(0, 0, 0, 0.22)";
+const NOTE_META_STYLE =
+  "display:flex;justify-content:space-between;gap:16px;color:#475569;font-size:18px";
+const NOTE_AUTHOR_STYLE = "font-weight:700";
+const NOTE_CONTENT_STYLE =
+  "margin:0;font-size:30px;line-height:1.32;white-space:pre-wrap;overflow-wrap:anywhere";
 
 export const runtimeDocumentCss = `
 :root {
@@ -58,7 +85,7 @@ body {
     radial-gradient(circle at top, rgba(56, 189, 248, 0.16), transparent 36%),
     linear-gradient(180deg, #020617 0%, #082032 45%, #0f172a 100%);
   color: #e2e8f0;
-  font: 500 16px/1.45 "Google Sans", "Roboto", "Droid Sans", "Noto Sans", sans-serif;
+  font: 500 16px/1.45 "Google Sans", "Roboto", "Droid Sans", "Noto Sans", "DejaVu Sans", sans-serif;
 }
 
 #shadow-blitz-root {
@@ -254,6 +281,44 @@ body {
 }
 `;
 
+function buttonStyle(variant: "primary" | "secondary", disabled = false) {
+  const base =
+    "min-height:76px;border:none;border-radius:999px;padding:18px 26px;font:inherit;font-size:28px;font-weight:800;letter-spacing:-0.03em";
+  const colors = variant === "primary"
+    ? "background:linear-gradient(135deg, #93c5fd 0%, #38bdf8 45%, #22d3ee 100%);color:#082f49"
+    : "background:rgba(14, 165, 233, 0.14);border:1px solid rgba(125, 211, 252, 0.2);color:#e0f2fe";
+  return `${base};${colors}${disabled ? ";opacity:0.7" : ""}`;
+}
+
+function statusStyle(kind: StatusState["kind"]) {
+  const base = "margin:0;padding:18px 20px;border-radius:24px;font-size:22px;line-height:1.35";
+  switch (kind) {
+    case "syncing":
+    case "posting":
+      return `${base};background:rgba(34, 211, 238, 0.12);border:1px solid rgba(103, 232, 249, 0.18);color:#ccfbf1`;
+    case "error":
+      return `${base};background:rgba(127, 29, 29, 0.18);border:1px solid rgba(251, 113, 133, 0.18);color:#fecdd3`;
+    case "idle":
+    case "ready":
+    default:
+      return `${base};background:rgba(14, 165, 233, 0.12);border:1px solid rgba(125, 211, 252, 0.16);color:#bae6fd`;
+  }
+}
+
+function composeStyle(focused: boolean) {
+  return [
+    "display:flex",
+    "flex-direction:column",
+    "gap:16px",
+    "padding:24px",
+    "border-radius:30px",
+    "background:rgba(2, 6, 23, 0.72)",
+    focused
+      ? "border:1px solid rgba(103, 232, 249, 0.48);box-shadow:0 0 0 2px rgba(34, 211, 238, 0.16)"
+      : "border:1px solid rgba(56, 189, 248, 0.16)",
+  ].join(";");
+}
+
 export function renderApp() {
   const config = readTimelineConfig();
   const [notes, setNotes] = createSignal<Kind1Event[]>(loadCachedNotes(config.limit));
@@ -328,17 +393,18 @@ export function renderApp() {
   }
 
   return (
-    <main class="timeline-shell">
-      <section class="timeline-hero">
-        <p class="timeline-eyebrow">Shadow Nostr</p>
-        <h1 class="timeline-title">Timeline</h1>
-        <p class="timeline-subtitle">
+    <main class="timeline-shell" style={SHELL_STYLE}>
+      <section class="timeline-hero" style={HERO_STYLE}>
+        <p class="timeline-eyebrow" style={EYEBROW_STYLE}>Shadow Nostr</p>
+        <h1 class="timeline-title" style={TITLE_STYLE}>Timeline</h1>
+        <p class="timeline-subtitle" style={SUBTITLE_STYLE}>
           OS-owned feed read path below the app. Compose locally. Refresh from relays.
         </p>
-        <div class="timeline-toolbar">
+        <div class="timeline-toolbar" style={TOOLBAR_STYLE}>
           <button
             class="timeline-button timeline-button-primary"
             data-shadow-id="refresh"
+            style={buttonStyle("primary")}
             onClick={() => void refreshTimeline("manual")}
           >
             Refresh feed
@@ -346,22 +412,30 @@ export function renderApp() {
           <button
             class="timeline-button timeline-button-secondary"
             data-shadow-id="quick-gm"
+            style={buttonStyle("secondary")}
             onClick={() => publishDraft("GM")}
           >
             Quick GM
           </button>
         </div>
-        <p class={`timeline-status timeline-status-${status().kind}`}>
+        <p
+          class={`timeline-status timeline-status-${status().kind}`}
+          style={statusStyle(status().kind)}
+        >
           {status().message}
         </p>
       </section>
 
-      <section class="timeline-compose">
-        <p class="timeline-compose-label">Compose</p>
+      <section
+        class={`timeline-compose ${focused() ? "timeline-compose-focused" : ""}`}
+        style={composeStyle(focused())}
+      >
+        <p class="timeline-compose-label" style={COMPOSE_LABEL_STYLE}>Compose</p>
         <input
           class="timeline-compose-input"
           data-shadow-id="draft"
           placeholder="Type a short English note"
+          style={COMPOSE_INPUT_STYLE}
           value={draft()}
           onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}
@@ -376,17 +450,18 @@ export function renderApp() {
             }
           }}
         />
-        <div class="timeline-toolbar">
+        <div class="timeline-toolbar" style={TOOLBAR_STYLE}>
           <button
             class="timeline-button timeline-button-primary"
             data-shadow-id="post"
             disabled={!draft().trim()}
+            style={buttonStyle("primary", !draft().trim())}
             onClick={() => publishDraft()}
           >
             Post note
           </button>
         </div>
-        <div class="timeline-compose-meta">
+        <div class="timeline-compose-meta" style={COMPOSE_META_STYLE}>
           <span>Focus: {focused() ? "focused" : "blurred"}</span>
           <span>Draft: {draft() || "(empty)"}</span>
           <span>Selection: {selection()}</span>
@@ -394,19 +469,23 @@ export function renderApp() {
         </div>
       </section>
 
-      <section class="timeline-feed">
+      <section class="timeline-feed" style={FEED_STYLE}>
         <Show
           when={notes().length > 0}
-          fallback={<p class="timeline-feed-empty">No notes yet.</p>}
+          fallback={<p class="timeline-feed-empty" style={FEED_EMPTY_STYLE}>No notes yet.</p>}
         >
           <For each={notes()}>
             {(event) => (
-              <article class="timeline-note">
-                <div class="timeline-note-meta">
-                  <span class="timeline-note-author">{shortPubkey(event.pubkey)}</span>
+              <article class="timeline-note" style={NOTE_STYLE}>
+                <div class="timeline-note-meta" style={NOTE_META_STYLE}>
+                  <span class="timeline-note-author" style={NOTE_AUTHOR_STYLE}>
+                    {shortPubkey(event.pubkey)}
+                  </span>
                   <span>{formatTimestamp(event.created_at)}</span>
                 </div>
-                <p class="timeline-note-content">{event.content}</p>
+                <p class="timeline-note-content" style={NOTE_CONTENT_STYLE}>
+                  {event.content}
+                </p>
               </article>
             )}
           </For>
