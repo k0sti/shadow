@@ -1,7 +1,10 @@
+mod control;
 mod kms;
+mod launch;
 mod touch;
 
 use std::{
+    collections::HashMap,
     ffi::OsString,
     fs,
     os::{fd::AsRawFd, unix::net::UnixStream},
@@ -11,7 +14,11 @@ use std::{
     time::{Duration, Instant},
 };
 
-use shadow_ui_core::scene::{APP_VIEWPORT_HEIGHT_PX, APP_VIEWPORT_WIDTH_PX};
+use shadow_ui_core::{
+    app::{self, AppId},
+    control::ControlRequest,
+    scene::{APP_VIEWPORT_HEIGHT_PX, APP_VIEWPORT_WIDTH_PX},
+};
 use smithay::{
     backend::allocator::{dmabuf::Dmabuf, Buffer as AllocatorBuffer, Format, Fourcc, Modifier},
     backend::input::ButtonState,
@@ -55,7 +62,7 @@ const GUEST_RUNTIME_CLIENT_BIN: &str = "/data/local/tmp/shadow-blitz-demo";
 const DEFAULT_TOPLEVEL_WIDTH: i32 = APP_VIEWPORT_WIDTH_PX as i32;
 const DEFAULT_TOPLEVEL_HEIGHT: i32 = APP_VIEWPORT_HEIGHT_PX as i32;
 
-fn default_guest_client_path() -> String {
+pub(crate) fn default_guest_client_path() -> String {
     GUEST_RUNTIME_CLIENT_BIN.into()
 }
 
@@ -90,6 +97,11 @@ struct ShadowGuestCompositor {
     seat_state: SeatState<Self>,
     seat: Seat<Self>,
     launched_clients: Vec<Child>,
+    launched_apps: HashMap<AppId, Child>,
+    surface_apps: HashMap<WlSurface, AppId>,
+    shelved_windows: HashMap<AppId, Window>,
+    focused_app: Option<AppId>,
+    pub(crate) control_socket_path: PathBuf,
     exit_on_first_window: bool,
     exit_on_first_frame: bool,
     exit_on_client_disconnect: bool,
@@ -123,6 +135,8 @@ impl ShadowGuestCompositor {
         let mut seat_state = SeatState::new();
         let mut seat = seat_state.new_wl_seat(&display_handle, "shadow-guest");
         seat.add_pointer();
+        let control_socket_path =
+            control::init_listener(event_loop).expect("create guest compositor control socket");
 
         let mut state = Self {
             start_time: Instant::now(),
@@ -139,6 +153,11 @@ impl ShadowGuestCompositor {
             seat_state,
             seat,
             launched_clients: Vec::new(),
+            launched_apps: HashMap::new(),
+            surface_apps: HashMap::new(),
+            shelved_windows: HashMap::new(),
+            focused_app: None,
+            control_socket_path,
             exit_on_first_window: std::env::var_os("SHADOW_GUEST_COMPOSITOR_EXIT_ON_FIRST_WINDOW")
                 .is_some(),
             exit_on_first_frame: std::env::var_os("SHADOW_GUEST_COMPOSITOR_EXIT_ON_FIRST_FRAME")
@@ -316,35 +335,41 @@ impl ShadowGuestCompositor {
                     false
                 }
             });
+        self.launched_apps
+            .retain(|app_id, child| match child.try_wait() {
+                Ok(Some(status)) => {
+                    tracing::info!(
+                        "[shadow-guest-compositor] launched-app-exited app={} pid={} status={status}",
+                        app_id.as_str(),
+                        child.id()
+                    );
+                    false
+                }
+                Ok(None) => true,
+                Err(error) => {
+                    tracing::warn!(
+                        "[shadow-guest-compositor] launched-app-wait-error app={} pid={} error={error}",
+                        app_id.as_str(),
+                        child.id()
+                    );
+                    false
+                }
+            });
     }
 
-    fn spawn_client(&mut self) -> std::io::Result<()> {
-        let client_path =
-            std::env::var("SHADOW_GUEST_CLIENT").unwrap_or_else(|_| default_guest_client_path());
-        let runtime_dir = std::env::var("XDG_RUNTIME_DIR")
-            .unwrap_or_else(|_| "/data/local/tmp/shadow-runtime".into());
-
-        let mut command = std::process::Command::new(&client_path);
-        command.env("XDG_RUNTIME_DIR", runtime_dir);
-        if let Some(value) = std::env::var("SHADOW_GUEST_CLIENT_ENV").ok() {
-            for assignment in value.split_whitespace() {
-                if let Some((key, env_value)) = assignment.split_once('=') {
-                    if !key.is_empty() {
-                        command.env(key, env_value);
-                    }
-                }
-            }
-        }
-        if let Some(value) = std::env::var_os("SHADOW_GUEST_CLIENT_EXIT_ON_CONFIGURE") {
-            command.env("SHADOW_GUEST_CLIENT_EXIT_ON_CONFIGURE", value);
-        }
-        if let Some(value) = std::env::var_os("SHADOW_GUEST_CLIENT_LINGER_MS") {
-            command.env("SHADOW_GUEST_CLIENT_LINGER_MS", value);
-        }
-
+    pub(crate) fn spawn_wayland_command(
+        &mut self,
+        mut command: std::process::Command,
+        label: &str,
+    ) -> std::io::Result<Child> {
         match &self.transport {
             WaylandTransport::NamedSocket(socket_name) => {
                 command.env("WAYLAND_DISPLAY", socket_name);
+                let child = command.spawn()?;
+                tracing::info!(
+                    "[shadow-guest-compositor] launched-client={label} transport=named-socket"
+                );
+                Ok(child)
             }
             WaylandTransport::DirectClientFd => {
                 let (server_stream, client_stream) = UnixStream::pair()?;
@@ -364,30 +389,241 @@ impl ShadowGuestCompositor {
                     .expect("insert wayland client");
                 let child = command.spawn()?;
                 drop(client_stream);
-                self.launched_clients.push(child);
                 tracing::info!(
-                    "[shadow-guest-compositor] launched-client={} transport=direct-client-fd fd={raw_fd}",
-                    client_path
+                    "[shadow-guest-compositor] launched-client={label} transport=direct-client-fd fd={raw_fd}"
                 );
-                return Ok(());
+                Ok(child)
             }
         }
+    }
 
-        let child = command.spawn()?;
-        self.launched_clients.push(child);
-        tracing::info!(
-            "[shadow-guest-compositor] launched-client={client_path} transport=named-socket"
+    fn spawn_client(&mut self) -> std::io::Result<()> {
+        let client_path =
+            std::env::var("SHADOW_GUEST_CLIENT").unwrap_or_else(|_| default_guest_client_path());
+        let runtime_dir = std::env::var("XDG_RUNTIME_DIR")
+            .unwrap_or_else(|_| "/data/local/tmp/shadow-runtime".into());
+
+        let mut command = std::process::Command::new(&client_path);
+        command.env("XDG_RUNTIME_DIR", runtime_dir);
+        command.env(
+            shadow_ui_core::control::COMPOSITOR_CONTROL_ENV,
+            self.control_socket_path.as_os_str(),
         );
+        if let Some(value) = std::env::var("SHADOW_GUEST_CLIENT_ENV").ok() {
+            for assignment in value.split_whitespace() {
+                if let Some((key, env_value)) = assignment.split_once('=') {
+                    if !key.is_empty() {
+                        command.env(key, env_value);
+                    }
+                }
+            }
+        }
+        if let Some(value) = std::env::var_os("SHADOW_GUEST_CLIENT_EXIT_ON_CONFIGURE") {
+            command.env("SHADOW_GUEST_CLIENT_EXIT_ON_CONFIGURE", value);
+        }
+        if let Some(value) = std::env::var_os("SHADOW_GUEST_CLIENT_LINGER_MS") {
+            command.env("SHADOW_GUEST_CLIENT_LINGER_MS", value);
+        }
+
+        let child = self.spawn_wayland_command(command, &client_path)?;
+        self.launched_clients.push(child);
         Ok(())
     }
 
     fn handle_window_mapped(&mut self, window: Window) {
-        self.space.map_element(window, (0, 0), false);
+        self.space
+            .map_element(window.clone(), self.app_window_location(), false);
+        self.focus_window(Some(window));
         tracing::info!("[shadow-guest-compositor] mapped-window");
         self.log_window_state("mapped-window");
         if self.exit_on_first_window {
             self.loop_signal.stop();
         }
+    }
+
+    fn app_window_location(&self) -> (i32, i32) {
+        (0, 0)
+    }
+
+    fn window_for_surface(&self, surface: &WlSurface) -> Option<Window> {
+        self.space
+            .elements()
+            .find(|candidate| candidate.toplevel().unwrap().wl_surface() == surface)
+            .cloned()
+    }
+
+    fn mapped_window_for_app(&self, app_id: AppId) -> Option<Window> {
+        self.surface_apps
+            .iter()
+            .find_map(|(surface, mapped_app_id)| {
+                (*mapped_app_id == app_id)
+                    .then(|| self.window_for_surface(surface))
+                    .flatten()
+            })
+    }
+
+    fn remember_surface_app(&mut self, surface: &WlSurface, app_id: AppId) {
+        self.surface_apps.insert(surface.clone(), app_id);
+        if self
+            .space
+            .elements()
+            .last()
+            .and_then(|window| window.toplevel())
+            .map(|toplevel| toplevel.wl_surface() == surface)
+            .unwrap_or(false)
+        {
+            self.focused_app = Some(app_id);
+        }
+        tracing::info!(
+            "[shadow-guest-compositor] surface-app-tracked app={} surface={surface:?}",
+            app_id.as_str()
+        );
+    }
+
+    fn forget_surface(&mut self, surface: &WlSurface) -> Option<AppId> {
+        let removed = self.surface_apps.remove(surface);
+        if removed == self.focused_app {
+            self.focused_app = None;
+        }
+        removed
+    }
+
+    fn focus_window(&mut self, window: Option<Window>) {
+        if let Some(window) = window {
+            self.space.raise_element(&window, true);
+            let focused_surface = window.toplevel().unwrap().wl_surface().clone();
+            self.focused_app = self.surface_apps.get(&focused_surface).copied();
+            self.space.elements().for_each(|candidate| {
+                let is_active = candidate.toplevel().unwrap().wl_surface() == &focused_surface;
+                candidate.set_activated(is_active);
+                candidate.toplevel().unwrap().send_pending_configure();
+            });
+            return;
+        }
+
+        self.space.elements().for_each(|candidate| {
+            candidate.set_activated(false);
+            candidate.toplevel().unwrap().send_pending_configure();
+        });
+        self.focused_app = None;
+    }
+
+    fn focus_top_window(&mut self) {
+        let window = self.space.elements().last().cloned();
+        self.focus_window(window);
+    }
+
+    fn go_home(&mut self) {
+        let Some(app_id) = self.focused_app else {
+            self.focus_window(None);
+            return;
+        };
+
+        if let Some(window) = self.mapped_window_for_app(app_id) {
+            self.space.unmap_elem(&window);
+            self.shelved_windows.insert(app_id, window);
+        }
+
+        self.focus_window(None);
+    }
+
+    fn launch_or_focus_app(&mut self, app_id: AppId) -> std::io::Result<()> {
+        self.reap_exited_clients();
+
+        if self.focused_app.is_some_and(|current| current != app_id) {
+            self.go_home();
+        }
+
+        if let Some(window) = self.mapped_window_for_app(app_id) {
+            self.focus_window(Some(window));
+            return Ok(());
+        }
+
+        if let Some(window) = self.shelved_windows.remove(&app_id) {
+            self.space
+                .map_element(window.clone(), self.app_window_location(), false);
+            self.focus_window(Some(window));
+            return Ok(());
+        }
+
+        if self.launched_apps.contains_key(&app_id) {
+            return Ok(());
+        }
+
+        let child = launch::launch_app(self, app_id)?;
+        self.launched_apps.insert(app_id, child);
+        Ok(())
+    }
+
+    fn handle_control_request(&mut self, request: ControlRequest) -> std::io::Result<String> {
+        match request {
+            ControlRequest::Launch { app_id } => {
+                self.launch_or_focus_app(app_id)?;
+                Ok("ok\n".to_string())
+            }
+            ControlRequest::Home => {
+                self.go_home();
+                Ok("ok\n".to_string())
+            }
+            ControlRequest::Switcher => Ok("ok\n".to_string()),
+            ControlRequest::State => Ok(self.control_state_response()),
+        }
+    }
+
+    fn control_state_response(&mut self) -> String {
+        self.reap_exited_clients();
+
+        let focused = self.focused_app.map(AppId::as_str).unwrap_or("");
+        let mapped = self.mapped_app_ids();
+        let launched = self.launched_app_ids();
+        let shelved = self.shelved_app_ids();
+        let transport = match &self.transport {
+            WaylandTransport::NamedSocket(socket_name) => {
+                socket_name.to_string_lossy().into_owned()
+            }
+            WaylandTransport::DirectClientFd => "direct-client-fd".to_string(),
+        };
+        format!(
+            "focused={focused}\nmapped={mapped}\nlaunched={launched}\nshelved={shelved}\nwindows={}\ntransport={transport}\ncontrol_socket={}\n",
+            self.space.elements().count(),
+            self.control_socket_path.display(),
+        )
+    }
+
+    fn mapped_app_ids(&self) -> String {
+        let mut app_ids: Vec<_> = self
+            .space
+            .elements()
+            .filter_map(|window| {
+                let surface = window.toplevel()?.wl_surface().clone();
+                self.surface_apps.get(&surface).copied().map(AppId::as_str)
+            })
+            .collect();
+        app_ids.sort_unstable();
+        app_ids.dedup();
+        app_ids.join(",")
+    }
+
+    fn launched_app_ids(&self) -> String {
+        let mut app_ids: Vec<_> = self
+            .launched_apps
+            .keys()
+            .copied()
+            .map(AppId::as_str)
+            .collect();
+        app_ids.sort_unstable();
+        app_ids.join(",")
+    }
+
+    fn shelved_app_ids(&self) -> String {
+        let mut app_ids: Vec<_> = self
+            .shelved_windows
+            .keys()
+            .copied()
+            .map(AppId::as_str)
+            .collect();
+        app_ids.sort_unstable();
+        app_ids.join(",")
     }
 
     fn insert_touch_source(&mut self, event_loop: &mut EventLoop<Self>) {
@@ -602,12 +838,7 @@ impl ShadowGuestCompositor {
             return;
         };
 
-        self.space.raise_element(&window, true);
-        self.space.elements().for_each(|candidate| {
-            let is_active = candidate.toplevel().unwrap().wl_surface() == &root_surface;
-            candidate.set_activated(is_active);
-            candidate.toplevel().unwrap().send_pending_configure();
-        });
+        self.focus_window(Some(window));
     }
 
     fn root_surface(&self, surface: &WlSurface) -> WlSurface {
@@ -649,6 +880,20 @@ impl ShadowGuestCompositor {
             size.w,
             size.h
         );
+    }
+
+    fn refresh_toplevel_app_id(&mut self, surface: &WlSurface) {
+        let app_id = with_states(surface, |states| {
+            states
+                .data_map
+                .get::<XdgToplevelSurfaceData>()
+                .and_then(|data| data.lock().ok().and_then(|attrs| attrs.app_id.clone()))
+        });
+        let Some(app_id) = app_id.as_deref().and_then(app::app_id_from_wayland_app_id) else {
+            return;
+        };
+
+        self.remember_surface_app(surface, app_id);
     }
 
     fn log_window_state(&self, reason: &str) {
@@ -1009,8 +1254,10 @@ impl XdgShellHandler for ShadowGuestCompositor {
     fn new_toplevel(&mut self, surface: ToplevelSurface) {
         self.configure_toplevel(&surface);
         let _ = surface.send_pending_configure();
+        let wl_surface = surface.wl_surface().clone();
         let window = Window::new_wayland_window(surface);
         self.handle_window_mapped(window);
+        self.refresh_toplevel_app_id(&wl_surface);
     }
 
     fn new_popup(
@@ -1035,6 +1282,21 @@ impl XdgShellHandler for ShadowGuestCompositor {
         _serial: Serial,
     ) {
     }
+
+    fn app_id_changed(&mut self, surface: ToplevelSurface) {
+        self.refresh_toplevel_app_id(surface.wl_surface());
+    }
+
+    fn toplevel_destroyed(&mut self, surface: ToplevelSurface) {
+        let wl_surface = surface.wl_surface().clone();
+        if let Some(window) = self.window_for_surface(&wl_surface) {
+            self.space.unmap_elem(&window);
+        }
+        if let Some(app_id) = self.forget_surface(&wl_surface) {
+            self.shelved_windows.remove(&app_id);
+        }
+        self.focus_top_window();
+    }
 }
 
 delegate_compositor!(ShadowGuestCompositor);
@@ -1047,6 +1309,10 @@ delegate_xdg_shell!(ShadowGuestCompositor);
 impl Drop for ShadowGuestCompositor {
     fn drop(&mut self) {
         for child in &mut self.launched_clients {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+        for child in self.launched_apps.values_mut() {
             let _ = child.kill();
             let _ = child.wait();
         }
@@ -1079,7 +1345,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             tracing::info!("[shadow-guest-compositor] boot-splash-drm enabled");
             state.run_boot_splash();
         }
-        state.spawn_client()?;
+        if let Some(app_id) = std::env::var("SHADOW_GUEST_START_APP_ID")
+            .ok()
+            .as_deref()
+            .and_then(app::find_app_by_str)
+            .map(|app| app.id)
+        {
+            tracing::info!(
+                "[shadow-guest-compositor] start-app-id={} control_socket={}",
+                app_id.as_str(),
+                state.control_socket_path.display()
+            );
+            state.launch_or_focus_app(app_id)?;
+        } else {
+            state.spawn_client()?;
+        }
     }
     event_loop.run(None, &mut state, |_| {})?;
     Ok(())

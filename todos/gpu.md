@@ -280,7 +280,16 @@ Living plan. Revise it as we learn. Do not treat this as a fixed contract.
       - `just pixel-gpu-warm` now prebuilds the current Pixel GPU timeline lane without launching it
       - `just pixel-runtime-app-nostr-timeline-gpu-smoke` runs the proven lane explicitly
 
-4. Keep measuring incremental latency, not just startup.
+4. Keep Pixel shell work on the right substrate.
+   - Do not spend more time trying to make nested `shadow-compositor` the shipping Pixel shell path unless a narrow diagnostic proves it is suddenly tractable.
+   - Prefer:
+     - shell/home logic on the outer guest compositor path
+     - a regular Pixel shell/home frontend client, not a nested compositor
+   - Current substrate seam:
+     - teach `shadow-compositor-guest` about app launch/focus/shelving and control requests directly
+     - do this before attempting the final Pixel home-shell frontend wiring
+
+5. Keep measuring incremental latency, not just startup.
    - Need:
      - tap-to-updated-frame
      - text-render correctness
@@ -288,7 +297,7 @@ Living plan. Revise it as we learn. Do not treat this as a fixed contract.
    - Current best proof:
      - timeline quick action updates in `~62ms`
 
-5. Defer startup polish unless it blocks product work.
+6. Defer startup polish unless it blocks product work.
    - Current note:
      - warmed click lane already reached `408ms`
      - first paint is no longer the main blocker
@@ -406,6 +415,18 @@ Living plan. Revise it as we learn. Do not treat this as a fixed contract.
   - current inference:
     - the remaining direct Vulkan blocker is below our app logic and below adapter selection
     - it is in the Turnip + Wayland surface configure/present path on this Pixel GNU userspace stack
+- `2026-04-07 shell substrate follow-up`:
+  - nested `shadow-compositor` is no longer the default Pixel shell plan
+  - the better plan is:
+    - keep the proven outer `shadow-compositor-guest`
+    - run the shell/home frontend as a regular Pixel client or port the shell scene/lifecycle into the outer guest compositor
+- `2026-04-07 guest compositor shell substrate`:
+  - next seam is not the full home UI yet
+  - it is:
+    - control socket on `shadow-compositor-guest`
+    - managed app launch/focus/shelving for counter/timeline
+    - app-id tracking from Wayland toplevel metadata
+  - this gives the eventual Pixel shell frontend a truthful substrate to target on the existing rooted compositor path
 - current best proven path remains:
   - `gpu_softbuffer`
   - hardware-backed client GPU on Turnip/KGSL
