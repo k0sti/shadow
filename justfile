@@ -99,10 +99,6 @@ runtime-app-nostr-cache-smoke:
 runtime-app-nostr-smoke-deno-runtime:
 	@just runtime-app-nostr-smoke deno-runtime
 
-# Run the GM auto-post runtime app through the default host backend
-runtime-app-nostr-gm-smoke:
-	@nix develop .#runtime -c scripts/runtime_app_nostr_gm_smoke.sh
-
 # Run the fixed-frame Blitz document smoke for app payload swapping
 runtime-app-blitz-document-smoke:
 	@scripts/runtime_app_blitz_document_smoke.sh
