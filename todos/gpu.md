@@ -91,6 +91,7 @@ Living plan. Revise it as we learn. Do not treat this as a fixed contract.
   - The runtime host bundle/device push path is still heavy.
 - [ ] The true `gpu` client renderer path is not the proven operator lane yet.
   - The proven lane today is `gpu_softbuffer`.
+  - Existing direct-`gpu` Pixel runs fail at `window.resume() -> wgpu_context.create_surface() -> NoCompatibleDevice`.
 - [ ] The guest compositor does not yet import/present dmabuf-backed client buffers on the rooted Pixel path.
 - [ ] There is not yet a one-command Pixel GPU timeline smoke that is both fast and independent of flaky remote rebuilds.
 
@@ -121,6 +122,10 @@ Living plan. Revise it as we learn. Do not treat this as a fixed contract.
   - KGSL-preferred setup
   - `gpu_softbuffer`
 - The current compositor path still looks SHM-oriented from the outside.
+- The direct `gpu` failure is now narrower than before:
+  - the bundled Turnip library does contain Wayland WSI entrypoints
+  - the direct path still fails when `wgpu` asks for a surface-compatible adapter
+  - the likely next seam is compositor protocol support and presentation compatibility, not basic Vulkan adapter discovery
 
 ## Best Known Numbers
 
@@ -227,6 +232,9 @@ Living plan. Revise it as we learn. Do not treat this as a fixed contract.
 5. Start the compositor transport seam.
    - Add or finish linux-dmabuf import/presentation in `shadow-compositor-guest`.
    - Re-run buffer classification and stop only when the result is no longer `type=shm`, or when we can prove that staying SHM does not materially hurt the real device path.
+   - Also validate the protocol globals that direct Turnip Wayland presentation appears to care about:
+     - `wp_presentation`
+     - explicit sync / syncobj feasibility on this DRM stack
 
 ## Plan To Finish This Project
 
@@ -258,6 +266,14 @@ Living plan. Revise it as we learn. Do not treat this as a fixed contract.
   - real GPU client plus GPU-friendly compositor transport
 - Work:
   - finish dmabuf import/presentation support in `shadow-compositor-guest`
+  - finish the direct-`gpu` Wayland surface investigation with the new local diagnostics:
+    - adapter-vs-surface compatibility logging in the vendored renderer stack
+    - `wp_presentation` exposed from the guest compositor
+    - runtime direct-`gpu` profile selection (`gl`, `vulkan_drm`, `vulkan_kgsl`, `vulkan_kgsl_first`)
+  - determine whether the remaining blocker is:
+    - missing compositor globals/protocols
+    - unsupported explicit sync on the Pixel DRM node
+    - or a deeper Turnip/KGSL Wayland presentation limitation
   - re-run buffer classification on Pixel
   - compare `gpu` vs `gpu_softbuffer`
 - Exit:

@@ -19,7 +19,8 @@ use smithay::{
         utils::{on_commit_buffer_handler, with_renderer_surface_state},
         BufferType,
     },
-    delegate_compositor, delegate_dmabuf, delegate_seat, delegate_shm, delegate_xdg_shell,
+    delegate_compositor, delegate_dmabuf, delegate_presentation, delegate_seat, delegate_shm,
+    delegate_xdg_shell,
     desktop::{Space, Window, WindowSurfaceType},
     input::{
         pointer::{ButtonEvent, MotionEvent},
@@ -41,6 +42,7 @@ use smithay::{
             TraversalAction,
         },
         dmabuf::{get_dmabuf, DmabufGlobal, DmabufHandler, DmabufState, ImportNotifier},
+        presentation::PresentationState,
         shell::xdg::{ToplevelSurface, XdgShellHandler, XdgShellState, XdgToplevelSurfaceData},
         shm::{with_buffer_contents, ShmHandler, ShmState},
         socket::ListeningSocketSource,
@@ -83,6 +85,7 @@ struct ShadowGuestCompositor {
     shm_state: ShmState,
     dmabuf_state: DmabufState,
     _dmabuf_global: DmabufGlobal,
+    _presentation_state: PresentationState,
     seat_state: SeatState<Self>,
     seat: Seat<Self>,
     launched_clients: Vec<Child>,
@@ -109,6 +112,8 @@ impl ShadowGuestCompositor {
         let mut dmabuf_state = DmabufState::new();
         let dmabuf_global =
             dmabuf_state.create_global::<Self>(&display_handle, dmabuf_formats.clone());
+        let presentation_state =
+            PresentationState::new::<Self>(&display_handle, libc::CLOCK_MONOTONIC as u32);
         let transport = Self::init_wayland_transport(
             display,
             event_loop,
@@ -129,6 +134,7 @@ impl ShadowGuestCompositor {
             shm_state: ShmState::new::<Self>(&display_handle, vec![]),
             dmabuf_state,
             _dmabuf_global: dmabuf_global,
+            _presentation_state: presentation_state,
             seat_state,
             seat,
             launched_clients: Vec::new(),
@@ -155,6 +161,7 @@ impl ShadowGuestCompositor {
             "[shadow-guest-compositor] dmabuf-global-ready formats={}",
             dmabuf_formats.len()
         );
+        tracing::info!("[shadow-guest-compositor] presentation-global-ready");
         if let Some(path) = state.touch_signal_path.as_ref() {
             tracing::info!(
                 "[shadow-guest-compositor] touch-signal-ready path={}",
@@ -1009,6 +1016,7 @@ impl XdgShellHandler for ShadowGuestCompositor {
 
 delegate_compositor!(ShadowGuestCompositor);
 delegate_dmabuf!(ShadowGuestCompositor);
+delegate_presentation!(ShadowGuestCompositor);
 delegate_seat!(ShadowGuestCompositor);
 delegate_shm!(ShadowGuestCompositor);
 delegate_xdg_shell!(ShadowGuestCompositor);
