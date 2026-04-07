@@ -3156,10 +3156,12 @@ name = "shadow-compositor-guest"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "chrono",
  "drm",
  "evdev",
  "libc",
  "shadow-ui-core",
+ "shadow-ui-software",
  "smithay",
  "tempfile",
  "tracing",

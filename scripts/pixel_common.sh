@@ -462,8 +462,20 @@ pixel_runtime_app_bundle_artifact() {
   pixel_artifact_path shadow-runtime-app-bundle.js
 }
 
+pixel_runtime_counter_bundle_artifact() {
+  pixel_artifact_path shadow-runtime-app-counter-bundle.js
+}
+
+pixel_runtime_timeline_bundle_artifact() {
+  pixel_artifact_path shadow-runtime-app-timeline-bundle.js
+}
+
 pixel_runtime_host_bundle_artifact_dir() {
   pixel_artifact_path shadow-runtime-gnu
+}
+
+pixel_shell_runtime_host_bundle_artifact_dir() {
+  pixel_artifact_path shadow-runtime-shell-gnu
 }
 
 pixel_guest_client_artifact() {
@@ -500,6 +512,14 @@ pixel_runtime_linux_dir() {
 
 pixel_runtime_app_bundle_dst() {
   printf '%s/runtime-app-bundle.js\n' "$(pixel_runtime_linux_dir)"
+}
+
+pixel_runtime_counter_bundle_dst() {
+  printf '%s/runtime-app-counter-bundle.js\n' "$(pixel_runtime_linux_dir)"
+}
+
+pixel_runtime_timeline_bundle_dst() {
+  printf '%s/runtime-app-timeline-bundle.js\n' "$(pixel_runtime_linux_dir)"
 }
 
 pixel_runtime_host_binary_dst() {

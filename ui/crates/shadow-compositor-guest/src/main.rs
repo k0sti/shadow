@@ -1,6 +1,7 @@
 mod control;
 mod kms;
 mod launch;
+mod shell;
 mod touch;
 
 use std::{
@@ -14,11 +15,17 @@ use std::{
     time::{Duration, Instant},
 };
 
+use chrono::Local;
 use shadow_ui_core::{
     app::{self, AppId},
     control::ControlRequest,
-    scene::{APP_VIEWPORT_HEIGHT_PX, APP_VIEWPORT_WIDTH_PX},
+    scene::{
+        APP_VIEWPORT_HEIGHT, APP_VIEWPORT_HEIGHT_PX, APP_VIEWPORT_WIDTH, APP_VIEWPORT_WIDTH_PX,
+        APP_VIEWPORT_X, APP_VIEWPORT_Y, HEIGHT, WIDTH,
+    },
+    shell::{PointerButtonState, ShellAction, ShellEvent, ShellModel, ShellStatus},
 };
+use shell::{AppFrame, GuestShellSurface};
 use smithay::{
     backend::allocator::{dmabuf::Dmabuf, Buffer as AllocatorBuffer, Format, Fourcc, Modifier},
     backend::input::ButtonState,
@@ -38,7 +45,7 @@ use smithay::{
         calloop::{channel, generic::Generic, EventLoop, Interest, LoopSignal, Mode, PostAction},
         wayland_server::{
             backend::{ClientData, ClientId, DisconnectReason},
-            protocol::{wl_buffer, wl_seat, wl_surface::WlSurface},
+            protocol::{wl_buffer, wl_seat, wl_shm, wl_surface::WlSurface},
             BindError, Client, Display, DisplayHandle,
         },
     },
@@ -98,9 +105,14 @@ struct ShadowGuestCompositor {
     seat: Seat<Self>,
     launched_clients: Vec<Child>,
     launched_apps: HashMap<AppId, Child>,
+    app_frames: HashMap<AppId, kms::CapturedFrame>,
     surface_apps: HashMap<WlSurface, AppId>,
     shelved_windows: HashMap<AppId, Window>,
     focused_app: Option<AppId>,
+    shell_enabled: bool,
+    shell: ShellModel,
+    shell_surface: GuestShellSurface,
+    shell_touch_active: bool,
     pub(crate) control_socket_path: PathBuf,
     exit_on_first_window: bool,
     exit_on_first_frame: bool,
@@ -137,6 +149,9 @@ impl ShadowGuestCompositor {
         seat.add_pointer();
         let control_socket_path =
             control::init_listener(event_loop).expect("create guest compositor control socket");
+        let shell_enabled = std::env::var_os("SHADOW_GUEST_SHELL").is_some()
+            || std::env::var("SHADOW_GUEST_START_APP_ID").ok().as_deref()
+                == Some(app::SHELL_APP_ID.as_str());
 
         let mut state = Self {
             start_time: Instant::now(),
@@ -154,9 +169,14 @@ impl ShadowGuestCompositor {
             seat,
             launched_clients: Vec::new(),
             launched_apps: HashMap::new(),
+            app_frames: HashMap::new(),
             surface_apps: HashMap::new(),
             shelved_windows: HashMap::new(),
             focused_app: None,
+            shell_enabled,
+            shell: ShellModel::new(),
+            shell_surface: GuestShellSurface::new(WIDTH as u32, HEIGHT as u32),
+            shell_touch_active: false,
             control_socket_path,
             exit_on_first_window: std::env::var_os("SHADOW_GUEST_COMPOSITOR_EXIT_ON_FIRST_WINDOW")
                 .is_some(),
@@ -442,7 +462,89 @@ impl ShadowGuestCompositor {
     }
 
     fn app_window_location(&self) -> (i32, i32) {
-        (0, 0)
+        if self.shell_enabled {
+            (APP_VIEWPORT_X.round() as i32, APP_VIEWPORT_Y.round() as i32)
+        } else {
+            (0, 0)
+        }
+    }
+
+    fn app_window_size(&self) -> smithay::utils::Size<i32, Logical> {
+        if self.shell_enabled {
+            (
+                APP_VIEWPORT_WIDTH.round() as i32,
+                APP_VIEWPORT_HEIGHT.round() as i32,
+            )
+                .into()
+        } else {
+            self.configured_toplevel_size()
+        }
+    }
+
+    fn shell_local_point(&self, position: Point<f64, Logical>) -> Option<(f32, f32)> {
+        ((0.0..=WIDTH as f64).contains(&position.x) && (0.0..=HEIGHT as f64).contains(&position.y))
+            .then_some((position.x as f32, position.y as f32))
+    }
+
+    fn shell_captures_point(&self, position: Point<f64, Logical>) -> Option<(f32, f32)> {
+        if !self.shell_enabled {
+            return None;
+        }
+
+        let (x, y) = self.shell_local_point(position)?;
+        self.shell.captures_point(x, y).then_some((x, y))
+    }
+
+    fn handle_shell_event(&mut self, event: ShellEvent) {
+        if !self.shell_enabled {
+            return;
+        }
+        if let Some(action) = self.shell.handle(event) {
+            self.handle_shell_action(action);
+        }
+    }
+
+    fn handle_shell_action(&mut self, action: ShellAction) {
+        match action {
+            ShellAction::Launch { app_id } => {
+                if let Err(error) = self.launch_or_focus_app(app_id) {
+                    tracing::warn!(
+                        "[shadow-guest-compositor] failed to launch/focus {}: {error}",
+                        app_id.as_str()
+                    );
+                }
+            }
+            ShellAction::Home => self.go_home(),
+        }
+    }
+
+    fn publish_visible_shell_frame(&mut self, frame_marker: &str) {
+        if !self.shell_enabled {
+            return;
+        }
+
+        let status = ShellStatus::demo(Local::now());
+        let scene = self.shell.scene(&status);
+        let app_frame = self.focused_app.and_then(|app_id| {
+            self.app_frames.get(&app_id).map(|frame| AppFrame {
+                width: frame.width,
+                height: frame.height,
+                stride: frame.stride,
+                pixels: &frame.pixels,
+            })
+        });
+        let pixels = self
+            .shell_surface
+            .render_scene_with_app_frame(&scene, app_frame)
+            .to_vec();
+        let frame = kms::captured_frame_from_pixels(
+            WIDTH.round() as u32,
+            HEIGHT.round() as u32,
+            pixels,
+            wl_shm::Format::Xrgb8888,
+        )
+        .expect("shell scene pixels match frame dimensions");
+        self.publish_frame(&frame, frame_marker);
     }
 
     fn window_for_surface(&self, surface: &WlSurface) -> Option<Window> {
@@ -464,6 +566,7 @@ impl ShadowGuestCompositor {
 
     fn remember_surface_app(&mut self, surface: &WlSurface, app_id: AppId) {
         self.surface_apps.insert(surface.clone(), app_id);
+        self.shell.set_app_running(app_id, true);
         if self
             .space
             .elements()
@@ -473,6 +576,7 @@ impl ShadowGuestCompositor {
             .unwrap_or(false)
         {
             self.focused_app = Some(app_id);
+            self.shell.set_foreground_app(Some(app_id));
         }
         tracing::info!(
             "[shadow-guest-compositor] surface-app-tracked app={} surface={surface:?}",
@@ -484,6 +588,11 @@ impl ShadowGuestCompositor {
         let removed = self.surface_apps.remove(surface);
         if removed == self.focused_app {
             self.focused_app = None;
+            self.shell.set_foreground_app(None);
+        }
+        if let Some(app_id) = removed {
+            self.shell.set_app_running(app_id, false);
+            self.app_frames.remove(&app_id);
         }
         removed
     }
@@ -493,6 +602,7 @@ impl ShadowGuestCompositor {
             self.space.raise_element(&window, true);
             let focused_surface = window.toplevel().unwrap().wl_surface().clone();
             self.focused_app = self.surface_apps.get(&focused_surface).copied();
+            self.shell.set_foreground_app(self.focused_app);
             self.space.elements().for_each(|candidate| {
                 let is_active = candidate.toplevel().unwrap().wl_surface() == &focused_surface;
                 candidate.set_activated(is_active);
@@ -506,6 +616,7 @@ impl ShadowGuestCompositor {
             candidate.toplevel().unwrap().send_pending_configure();
         });
         self.focused_app = None;
+        self.shell.set_foreground_app(None);
     }
 
     fn focus_top_window(&mut self) {
@@ -516,6 +627,7 @@ impl ShadowGuestCompositor {
     fn go_home(&mut self) {
         let Some(app_id) = self.focused_app else {
             self.focus_window(None);
+            self.publish_visible_shell_frame("shell-home-frame");
             return;
         };
 
@@ -525,6 +637,7 @@ impl ShadowGuestCompositor {
         }
 
         self.focus_window(None);
+        self.publish_visible_shell_frame("shell-home-frame");
     }
 
     fn launch_or_focus_app(&mut self, app_id: AppId) -> std::io::Result<()> {
@@ -536,6 +649,7 @@ impl ShadowGuestCompositor {
 
         if let Some(window) = self.mapped_window_for_app(app_id) {
             self.focus_window(Some(window));
+            self.publish_visible_shell_frame("shell-app-focus-frame");
             return Ok(());
         }
 
@@ -543,6 +657,7 @@ impl ShadowGuestCompositor {
             self.space
                 .map_element(window.clone(), self.app_window_location(), false);
             self.focus_window(Some(window));
+            self.publish_visible_shell_frame("shell-app-resume-frame");
             return Ok(());
         }
 
@@ -673,6 +788,11 @@ impl ShadowGuestCompositor {
                 );
                 let Some(position) = self.touch_position(event.normalized_x, event.normalized_y)
                 else {
+                    if self.shell_touch_active {
+                        self.handle_shell_event(ShellEvent::PointerLeft);
+                        self.shell_touch_active = false;
+                        self.publish_visible_shell_frame("shell-touch-frame");
+                    }
                     self.log_touch_mapping(event.normalized_x, event.normalized_y);
                     tracing::info!(
                         "[shadow-guest-compositor] touch-outside-content normalized={:.3},{:.3}",
@@ -681,6 +801,29 @@ impl ShadowGuestCompositor {
                     );
                     return;
                 };
+                let shell_point = self.shell_captures_point(position);
+                if self.shell_touch_active || shell_point.is_some() {
+                    let (x, y) = self
+                        .shell_local_point(position)
+                        .unwrap_or((position.x as f32, position.y as f32));
+                    tracing::info!(
+                        "[shadow-guest-compositor] touch-shell phase={:?} x={:.1} y={:.1}",
+                        event.phase,
+                        x,
+                        y
+                    );
+                    self.handle_shell_event(ShellEvent::PointerMoved { x, y });
+                    if matches!(event.phase, touch::TouchPhase::Down) {
+                        self.shell_touch_active = true;
+                        self.handle_shell_event(ShellEvent::PointerButton(
+                            PointerButtonState::Pressed,
+                        ));
+                    }
+                    self.publish_visible_shell_frame("shell-touch-frame");
+                    return;
+                }
+                self.shell_touch_active = false;
+                self.handle_shell_event(ShellEvent::PointerLeft);
                 let under = self.surface_under(position);
                 tracing::info!(
                     "[shadow-guest-compositor] touch-pointer phase={:?} x={:.1} y={:.1} surface={}",
@@ -719,6 +862,32 @@ impl ShadowGuestCompositor {
                 self.flush_wayland_clients();
             }
             touch::TouchPhase::Up => {
+                if self.shell_touch_active {
+                    if let Some(position) =
+                        self.touch_position(event.normalized_x, event.normalized_y)
+                    {
+                        if let Some((x, y)) = self.shell_local_point(position) {
+                            self.handle_shell_event(ShellEvent::PointerMoved { x, y });
+                            tracing::info!(
+                                "[shadow-guest-compositor] touch-shell phase=Up x={:.1} y={:.1}",
+                                x,
+                                y
+                            );
+                        } else {
+                            self.handle_shell_event(ShellEvent::PointerLeft);
+                        }
+                    } else {
+                        self.handle_shell_event(ShellEvent::PointerLeft);
+                    }
+                    self.shell_touch_active = false;
+                    self.handle_shell_event(ShellEvent::PointerButton(
+                        PointerButtonState::Released,
+                    ));
+                    self.publish_visible_shell_frame("shell-touch-frame");
+                    return;
+                } else {
+                    self.handle_shell_event(ShellEvent::PointerLeft);
+                }
                 tracing::info!("[shadow-guest-compositor] touch-input phase=Up");
                 pointer.button(
                     self,
@@ -870,7 +1039,7 @@ impl ShadowGuestCompositor {
     }
 
     fn configure_toplevel(&self, surface: &ToplevelSurface) {
-        let size = self.configured_toplevel_size();
+        let size = self.app_window_size();
         surface.with_pending_state(|state| {
             state.size = Some(size);
             state.bounds = Some(size);
@@ -1065,7 +1234,15 @@ impl ShadowGuestCompositor {
 
         match capture_result {
             Ok(Ok(frame)) => {
-                self.publish_frame(&frame, "captured-frame");
+                if self.shell_enabled {
+                    let app_id = self.surface_apps.get(surface).copied();
+                    if let Some(app_id) = app_id {
+                        self.app_frames.insert(app_id, frame);
+                    }
+                    self.publish_visible_shell_frame("captured-frame");
+                } else {
+                    self.publish_frame(&frame, "captured-frame");
+                }
             }
             Ok(Err(error)) => {
                 tracing::warn!("[shadow-guest-compositor] capture-frame failed: {error}");
@@ -1296,6 +1473,9 @@ impl XdgShellHandler for ShadowGuestCompositor {
             self.shelved_windows.remove(&app_id);
         }
         self.focus_top_window();
+        if self.shell_enabled {
+            self.publish_visible_shell_frame("shell-toplevel-destroyed-frame");
+        }
     }
 }
 
@@ -1345,7 +1525,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             tracing::info!("[shadow-guest-compositor] boot-splash-drm enabled");
             state.run_boot_splash();
         }
-        if let Some(app_id) = std::env::var("SHADOW_GUEST_START_APP_ID")
+        if state.shell_enabled {
+            tracing::info!("[shadow-guest-compositor] shell-mode enabled");
+            state.publish_visible_shell_frame("shell-home-frame");
+        } else if let Some(app_id) = std::env::var("SHADOW_GUEST_START_APP_ID")
             .ok()
             .as_deref()
             .and_then(app::find_app_by_str)

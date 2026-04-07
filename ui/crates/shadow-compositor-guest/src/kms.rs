@@ -221,6 +221,36 @@ pub fn build_boot_splash_frame(panel_width: u32, panel_height: u32) -> CapturedF
     }
 }
 
+pub fn captured_frame_from_pixels(
+    width: u32,
+    height: u32,
+    pixels: Vec<u8>,
+    format: wl_shm::Format,
+) -> Result<CapturedFrame> {
+    let stride = width
+        .checked_mul(BYTES_PER_PIXEL as u32)
+        .ok_or_else(|| anyhow!("frame stride overflowed"))?;
+    let expected_len = usize::try_from(u64::from(stride) * u64::from(height))
+        .context("frame byte length overflowed")?;
+    if pixels.len() != expected_len {
+        return Err(anyhow!(
+            "pixel buffer length {} did not match expected {} for {}x{}",
+            pixels.len(),
+            expected_len,
+            width,
+            height
+        ));
+    }
+
+    Ok(CapturedFrame {
+        width,
+        height,
+        stride,
+        format,
+        pixels,
+    })
+}
+
 pub struct KmsDisplay {
     card: Card,
     master_locked: bool,
@@ -562,8 +592,8 @@ fn find_connected_connector(
 #[cfg(test)]
 mod tests {
     use super::{
-        blit_frame_centered, clear_framebuffer, frame_checksum, write_frame_ppm, CapturedFrame,
-        BACKGROUND_PIXEL,
+        blit_frame_centered, captured_frame_from_pixels, clear_framebuffer, frame_checksum,
+        write_frame_ppm, CapturedFrame, BACKGROUND_PIXEL,
     };
     use smithay::reexports::wayland_server::protocol::wl_shm;
     use tempfile::tempdir;
@@ -638,5 +668,17 @@ mod tests {
         assert_eq!(&bytes[..11], b"P6\n2 1\n255\n");
         assert_eq!(&bytes[11..], &[0x30, 0x20, 0x10, 0x60, 0x50, 0x40]);
         assert_eq!(frame_checksum(&frame), 0xf571c5344f1ed48d);
+    }
+
+    #[test]
+    fn captured_frame_from_pixels_validates_length() {
+        let frame =
+            captured_frame_from_pixels(1, 1, vec![220, 120, 20, 128], wl_shm::Format::Argb8888)
+                .unwrap();
+
+        assert_eq!(frame.width, 1);
+        assert_eq!(frame.height, 1);
+        assert_eq!(frame.stride, 4);
+        assert_eq!(frame.pixels, vec![220, 120, 20, 128]);
     }
 }

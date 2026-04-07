@@ -284,10 +284,13 @@ Living plan. Revise it as we learn. Do not treat this as a fixed contract.
    - Do not spend more time trying to make nested `shadow-compositor` the shipping Pixel shell path unless a narrow diagnostic proves it is suddenly tractable.
    - Prefer:
      - shell/home logic on the outer guest compositor path
-     - a regular Pixel shell/home frontend client, not a nested compositor
-   - Current substrate seam:
-     - teach `shadow-compositor-guest` about app launch/focus/shelving and control requests directly
-     - do this before attempting the final Pixel home-shell frontend wiring
+     - compositor-owned shell composition over nested `shadow-compositor`
+   - Current substrate status:
+     - `shadow-compositor-guest` now has app launch/focus/shelving/control
+     - shell mode now software-composes the existing home scene plus the current app viewport on the outer guest compositor path
+   - Next shell seam:
+     - add a truthful Pixel operator path for shell mode
+     - validate the shell path live on device before widening `run <serial>`
 
 5. Keep measuring incremental latency, not just startup.
    - Need:
@@ -427,6 +430,13 @@ Living plan. Revise it as we learn. Do not treat this as a fixed contract.
     - managed app launch/focus/shelving for counter/timeline
     - app-id tracking from Wayland toplevel metadata
   - this gives the eventual Pixel shell frontend a truthful substrate to target on the existing rooted compositor path
+- `2026-04-07 guest compositor shell composition`:
+  - the better immediate Pixel shell path is now clearer:
+    - keep the outer guest compositor
+    - render the existing `shadow_ui_core::ShellModel` scene directly there
+    - composite the focused app frame into the app viewport
+  - this avoids the nested EGL failure mode entirely
+  - current remaining shell work is operator/live-validation work, not another compositor-in-compositor experiment
 - current best proven path remains:
   - `gpu_softbuffer`
   - hardware-backed client GPU on Turnip/KGSL

@@ -235,9 +235,21 @@ pixel-push:
 pixel-prepare-runtime-app-artifacts:
 	@scripts/pixel_prepare_runtime_app_artifacts.sh
 
+# Stage the counter + timeline runtime bundles plus GNU-wrapped helper for Pixel shell use
+pixel-prepare-shell-runtime-artifacts:
+	@scripts/pixel_prepare_shell_runtime_artifacts.sh
+
 # Run the runtime-mode Blitz demo on the rooted Pixel through the guest compositor DRM path
 pixel-runtime-app-drm:
 	@scripts/pixel_runtime_app_drm.sh
+
+# Run the shell/home scene on the rooted Pixel through the guest compositor DRM path
+pixel-shell-drm:
+	@scripts/pixel_shell_drm.sh
+
+# Run the shell/home scene on the rooted Pixel, keep the panel seized, and leave Android stopped
+pixel-shell-drm-hold:
+	@scripts/pixel_shell_drm_hold.sh
 
 # Run one rooted-Pixel runtime direct-gpu probe case with the selected backend profile
 pixel-runtime-app-drm-gpu-probe profile="vulkan_kgsl_first":
