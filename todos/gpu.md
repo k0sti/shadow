@@ -99,6 +99,17 @@ Living plan. Revise it as we learn. Do not treat this as a fixed contract.
   - root causes fixed:
     - shell scene was still published at logical `540x1170`, so KMS centered it instead of filling the panel
     - shell app composition treated `Xrgb8888` child buffers like transparent-alpha content
+- [x] Guest-compositor keyboard-seat startup is repaired on the rooted Pixel path.
+  - regression:
+    - adding a real keyboard seat caused `shadow-compositor-guest` to crash during xkbcommon init on device
+  - root cause:
+    - the rooted runtime bundle did not include `xkeyboard-config`, and the session still relied on a dead Nix-store default XKB path
+  - fix:
+    - stage `share/X11/xkb` into every rooted Linux runtime bundle
+    - export `XKB_CONFIG_ROOT=/data/local/tmp/shadow-runtime-gnu/share/X11/xkb` for the rooted guest session
+    - invalidate old cached bundles that only had the broken symlinked XKB tree
+  - validated rooted run:
+    - `build/pixel/drm-guest/20260407T231051Z`
 
 ### Not Done
 
@@ -162,7 +173,8 @@ Living plan. Revise it as we learn. Do not treat this as a fixed contract.
       - drag inside the app viewport should scroll, not text-select
       - switching from one runtime app to another should not keep stacking full GPU clients
     - restore compose-field keyboard behavior on device
-      - regression fixed in part by giving `shadow-compositor-guest` a real keyboard seat and seat focus
+      - startup regression from the keyboard-seat change is fixed by staging `xkeyboard-config` into the rooted bundle and exporting `XKB_CONFIG_ROOT`
+      - seat focus is fixed in the guest compositor
       - if soft keyboard still does not appear after that, the remaining gap is likely missing Wayland text-input / input-method support on the rooted guest-compositor path
 
 ## What Is Proven vs. What Is Not
@@ -241,6 +253,7 @@ Living plan. Revise it as we learn. Do not treat this as a fixed contract.
   - fix:
     - add a keyboard capability to the guest seat
     - set and clear Smithay keyboard focus alongside window activation
+    - stage real XKB data into the rooted runtime bundle and export `XKB_CONFIG_ROOT` for the session
   - remaining question:
     - whether the rooted Pixel soft keyboard still needs explicit Wayland text-input/input-method support beyond correct seat focus
 

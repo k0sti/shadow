@@ -33,6 +33,7 @@ bundle_asset_dir=""
 host_bundle_cache_hit=0
 host_bundle_source_fingerprint=""
 runtime_helper_content_fingerprint=""
+xkb_source_dir="$(runtime_bundle_xkb_source_dir)"
 
 bundle_json="$(
   nix develop "$repo"#runtime -c deno run --quiet \
@@ -101,6 +102,7 @@ host_bundle_source_fingerprint="$(
     "$SCRIPT_DIR/pixel_prepare_runtime_app_artifacts.sh" \
     "$SCRIPT_DIR/pixel_runtime_linux_bundle_common.sh" \
     "${bundle_asset_dir:-__no_bundle_assets__}" \
+    "$xkb_source_dir" \
     "${extra_bundle_dir:-__no_extra_bundle__}" \
     "__pixel_runtime_enable_linux_audio__${audio_enabled}" \
     "__pixel_runtime_audio_package_ref__${audio_package_ref}"
@@ -110,6 +112,8 @@ if [[ "${PIXEL_FORCE_LINUX_BUNDLE_REBUILD-}" != 1 ]] \
   && [[ -d "$host_bundle_dir" ]] \
   && [[ -x "$host_launcher_artifact" ]] \
   && [[ -f "$host_bundle_dir/$host_binary_name" ]] \
+  && [[ -d "$host_bundle_dir/share/X11/xkb" ]] \
+  && [[ ! -L "$host_bundle_dir/share/X11/xkb" ]] \
   && runtime_bundle_manifest_matches "$host_bundle_manifest_path" "$host_bundle_source_fingerprint"; then
   host_bundle_cache_hit=1
   if [[ "$audio_enabled" == "1" ]] \
@@ -130,6 +134,7 @@ if [[ "$host_bundle_cache_hit" != "1" ]]; then
     append_runtime_closure_from_package_ref "$audio_package_ref"
   fi
   fill_linux_bundle_runtime_deps "$host_bundle_dir"
+  stage_runtime_bundle_xkb_config "$host_bundle_dir"
   if [[ "$audio_enabled" == "1" ]]; then
     copy_closure_dir_into_bundle "share/alsa" "$host_bundle_dir/share/alsa"
     mkdir -p "$host_bundle_dir/lib/alsa-lib"

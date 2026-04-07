@@ -23,6 +23,7 @@ audio_package_ref="$repo#shadow-linux-audio-spike-aarch64-linux-gnu"
 audio_out_link="$(pixel_dir)/shadow-linux-audio-spike-aarch64-linux-gnu-result"
 audio_binary_name="shadow-linux-audio-spike"
 audio_launcher_artifact="$host_bundle_dir/run-$audio_binary_name"
+xkb_source_dir="$(runtime_bundle_xkb_source_dir)"
 
 counter_input_path="${PIXEL_SHELL_COUNTER_INPUT_PATH:-runtime/app-counter/app.tsx}"
 counter_cache_dir="${PIXEL_SHELL_COUNTER_CACHE_DIR:-build/runtime/pixel-shell-counter}"
@@ -134,6 +135,7 @@ host_bundle_source_fingerprint="$(
     "$repo/rust/vendor/temporal_rs" \
     "$SCRIPT_DIR/pixel_prepare_shell_runtime_artifacts.sh" \
     "$SCRIPT_DIR/pixel_runtime_linux_bundle_common.sh" \
+    "$xkb_source_dir" \
     "$counter_bundle_source_path" \
     "$timeline_bundle_source_path" \
     "$podcast_bundle_source_path" \
@@ -152,6 +154,8 @@ if [[ "${PIXEL_FORCE_LINUX_BUNDLE_REBUILD-}" != 1 ]] \
   && [[ -f "$host_bundle_dir/$(basename "$(pixel_runtime_counter_bundle_dst)")" ]] \
   && [[ -f "$host_bundle_dir/$(basename "$(pixel_runtime_timeline_bundle_dst)")" ]] \
   && [[ -f "$host_bundle_dir/$(basename "$(pixel_runtime_podcast_bundle_dst)")" ]] \
+  && [[ -d "$host_bundle_dir/share/X11/xkb" ]] \
+  && [[ ! -L "$host_bundle_dir/share/X11/xkb" ]] \
   && runtime_bundle_manifest_matches "$host_bundle_manifest_path" "$host_bundle_source_fingerprint"; then
   host_bundle_cache_hit=1
   if [[ "$audio_enabled" == "1" ]] \
@@ -170,6 +174,7 @@ else
     append_runtime_closure_from_package_ref "$audio_package_ref"
   fi
   fill_linux_bundle_runtime_deps "$host_bundle_dir"
+  stage_runtime_bundle_xkb_config "$host_bundle_dir"
   if [[ "$audio_enabled" == "1" ]]; then
     copy_closure_dir_into_bundle "share/alsa" "$host_bundle_dir/share/alsa"
     mkdir -p "$host_bundle_dir/lib/alsa-lib"

@@ -20,6 +20,8 @@ frame_artifact="$run_dir/shadow-frame.ppm"
 pull_log_path="$run_dir/frame-pull.txt"
 frame_path="$(pixel_frame_path)"
 runtime_dir="$(pixel_runtime_dir)"
+runtime_linux_dir="$(pixel_runtime_linux_dir)"
+xkb_config_root="$runtime_linux_dir/share/X11/xkb"
 session_dst="$(pixel_session_dst)"
 compositor_dst="$(pixel_compositor_dst)"
 client_dst="$(pixel_guest_client_dst)"
@@ -230,7 +232,7 @@ phone_script="$(
 $(pixel_takeover_stop_services_script)
 rm -rf $runtime_dir && mkdir -p $runtime_dir && chmod 700 $runtime_dir && rm -f $frame_path
 ${guest_precreate_dirs:+for prep_dir in $guest_precreate_dirs; do mkdir -p "\$prep_dir"; done}
-${session_timeout_secs:+timeout $session_timeout_secs }env ${guest_session_env:+$guest_session_env }SHADOW_SESSION_MODE=guest-ui SHADOW_RUNTIME_DIR=$runtime_dir SHADOW_GUEST_COMPOSITOR_BIN=$compositor_dst SHADOW_GUEST_CLIENT=$client_dst SHADOW_GUEST_COMPOSITOR_TRANSPORT=$guest_transport SHADOW_GUEST_COMPOSITOR_ENABLE_DRM=1 ${guest_selftest_drm:+SHADOW_GUEST_COMPOSITOR_SELFTEST_DRM=$guest_selftest_drm }${compositor_exit_on_first_frame:+SHADOW_GUEST_COMPOSITOR_EXIT_ON_FIRST_FRAME=$compositor_exit_on_first_frame }${compositor_exit_on_client_disconnect:+SHADOW_GUEST_COMPOSITOR_EXIT_ON_CLIENT_DISCONNECT=$compositor_exit_on_client_disconnect }${client_exit_on_configure:+SHADOW_GUEST_CLIENT_EXIT_ON_CONFIGURE=$client_exit_on_configure }${client_linger_ms:+SHADOW_GUEST_CLIENT_LINGER_MS=$client_linger_ms }${guest_client_env_quoted:+SHADOW_GUEST_CLIENT_ENV=$guest_client_env_quoted }SHADOW_GUEST_FRAME_PATH=$frame_path RUST_LOG=shadow_compositor_guest=info,shadow_blitz_demo=info,smithay=warn $session_dst
+${session_timeout_secs:+timeout $session_timeout_secs }env ${guest_session_env:+$guest_session_env }XKB_CONFIG_ROOT=$xkb_config_root SHADOW_SESSION_MODE=guest-ui SHADOW_RUNTIME_DIR=$runtime_dir SHADOW_GUEST_COMPOSITOR_BIN=$compositor_dst SHADOW_GUEST_CLIENT=$client_dst SHADOW_GUEST_COMPOSITOR_TRANSPORT=$guest_transport SHADOW_GUEST_COMPOSITOR_ENABLE_DRM=1 ${guest_selftest_drm:+SHADOW_GUEST_COMPOSITOR_SELFTEST_DRM=$guest_selftest_drm }${compositor_exit_on_first_frame:+SHADOW_GUEST_COMPOSITOR_EXIT_ON_FIRST_FRAME=$compositor_exit_on_first_frame }${compositor_exit_on_client_disconnect:+SHADOW_GUEST_COMPOSITOR_EXIT_ON_CLIENT_DISCONNECT=$compositor_exit_on_client_disconnect }${client_exit_on_configure:+SHADOW_GUEST_CLIENT_EXIT_ON_CONFIGURE=$client_exit_on_configure }${client_linger_ms:+SHADOW_GUEST_CLIENT_LINGER_MS=$client_linger_ms }${guest_client_env_quoted:+SHADOW_GUEST_CLIENT_ENV=$guest_client_env_quoted }SHADOW_GUEST_FRAME_PATH=$frame_path RUST_LOG=shadow_compositor_guest=info,shadow_blitz_demo=info,smithay=warn $session_dst
 status=\$?
 ${restore_delay_secs:+sleep $restore_delay_secs}
 $(if [[ -n "$restore_android" ]]; then pixel_takeover_start_services_script; fi)

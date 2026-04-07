@@ -12,6 +12,40 @@ runtime_bundle_file_hash() {
   shasum -a 256 "$path" | awk '{print $1}'
 }
 
+runtime_bundle_xkb_source_dir() {
+  local xkb_store
+
+  if [[ -n "${PIXEL_XKB_CONFIG_SOURCE_DIR-}" ]]; then
+    printf '%s\n' "$PIXEL_XKB_CONFIG_SOURCE_DIR"
+    return 0
+  fi
+
+  xkb_store="$(
+    nix build --accept-flake-config --no-link --print-out-paths 'nixpkgs#xkeyboard_config' | tail -n 1
+  )"
+  PIXEL_XKB_CONFIG_SOURCE_DIR="$xkb_store/share/X11/xkb"
+  export PIXEL_XKB_CONFIG_SOURCE_DIR
+
+  if [[ ! -d "$PIXEL_XKB_CONFIG_SOURCE_DIR" ]]; then
+    echo "pixel runtime bundle: missing xkeyboard-config data dir: $PIXEL_XKB_CONFIG_SOURCE_DIR" >&2
+    return 1
+  fi
+
+  printf '%s\n' "$PIXEL_XKB_CONFIG_SOURCE_DIR"
+}
+
+stage_runtime_bundle_xkb_config() {
+  local bundle_dir xkb_source_dir xkb_dest_dir
+  bundle_dir="$1"
+  xkb_source_dir="$(runtime_bundle_xkb_source_dir)"
+  xkb_dest_dir="$bundle_dir/share/X11/xkb"
+
+  mkdir -p "$(dirname "$xkb_dest_dir")"
+  chmod -R u+w "$bundle_dir/share" 2>/dev/null || true
+  rm -rf "$xkb_dest_dir"
+  cp -LR "$xkb_source_dir" "$xkb_dest_dir"
+}
+
 normalize_runtime_bundle_input_path() {
   local path
   path="$1"
@@ -127,6 +161,8 @@ reuse_cached_runtime_bundle() {
   [[ -d "$bundle_dir" ]] || return 1
   [[ -x "$launcher_artifact" ]] || return 1
   [[ -f "$bundle_dir/shadow-blitz-demo" ]] || return 1
+  [[ -d "$bundle_dir/share/X11/xkb" ]] || return 1
+  [[ ! -L "$bundle_dir/share/X11/xkb" ]] || return 1
 
   runtime_bundle_manifest_matches "$manifest_path" "$expected_fingerprint" || return 1
 
