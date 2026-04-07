@@ -16,6 +16,8 @@ const DRM_DEVICE_PATH: &str = "/dev/dri/card0";
 const BYTES_PER_PIXEL: usize = 4;
 const BACKGROUND_PIXEL: [u8; 4] = [0x18, 0x12, 0x10, 0xFF];
 const SELFTEST_BORDER_PX: u32 = 24;
+const BOOT_SPLASH_WIDTH: u32 = 384;
+const BOOT_SPLASH_HEIGHT: u32 = 720;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CapturedFrame {
@@ -130,6 +132,85 @@ pub fn build_selftest_frame(width: u32, height: u32) -> CapturedFrame {
             pixels[offset + 3] = 0xFF;
         }
     }
+
+    CapturedFrame {
+        width,
+        height,
+        stride,
+        format: wl_shm::Format::Xrgb8888,
+        pixels,
+    }
+}
+
+pub fn build_boot_splash_frame(panel_width: u32, panel_height: u32) -> CapturedFrame {
+    let width = BOOT_SPLASH_WIDTH.min(panel_width);
+    let height = BOOT_SPLASH_HEIGHT.min(panel_height);
+    let stride = width * BYTES_PER_PIXEL as u32;
+    let mut pixels = vec![0_u8; usize::try_from(u64::from(stride) * u64::from(height)).unwrap()];
+
+    fill_frame(&mut pixels, [0x18, 0x12, 0x10, 0xFF]);
+
+    let card_width = width.saturating_mul(2) / 3;
+    let card_height = height.saturating_mul(3) / 5;
+    let card_x = (width.saturating_sub(card_width)) / 2;
+    let card_y = (height.saturating_sub(card_height)) / 2;
+
+    fill_rect(
+        &mut pixels,
+        width,
+        height,
+        card_x,
+        card_y,
+        card_width,
+        card_height,
+        [0x4A, 0x28, 0x16, 0xFF],
+    );
+
+    let accent_margin = card_width / 12;
+    let accent_x = card_x + accent_margin;
+    let accent_width = card_width.saturating_sub(accent_margin * 2);
+    let accent_y = card_y + card_height / 9;
+    let accent_height = card_height / 7;
+    fill_rect(
+        &mut pixels,
+        width,
+        height,
+        accent_x,
+        accent_y,
+        accent_width,
+        accent_height,
+        [0xFF, 0xD3, 0x45, 0xFF],
+    );
+
+    let status_width = card_width / 2;
+    let status_height = card_height / 24;
+    let status_y = accent_y + accent_height + card_height / 12;
+    let status_gap = status_height;
+    for index in 0..3 {
+        let segment_x = card_x + accent_margin + (index * (status_width / 3 + status_gap));
+        fill_rect(
+            &mut pixels,
+            width,
+            height,
+            segment_x,
+            status_y,
+            status_width / 3,
+            status_height,
+            [0x9A, 0x74, 0x2A, 0xFF],
+        );
+    }
+
+    let footer_y = card_y + card_height - card_height / 6;
+    fill_rect(
+        &mut pixels,
+        width,
+        height,
+        accent_x,
+        footer_y,
+        accent_width,
+        card_height / 10,
+        [0x66, 0x4A, 0x1F, 0xFF],
+    );
 
     CapturedFrame {
         width,
@@ -295,6 +376,35 @@ impl Drop for KmsDisplay {
 fn clear_framebuffer(framebuffer: &mut [u8]) {
     for pixel in framebuffer.chunks_exact_mut(BYTES_PER_PIXEL) {
         pixel.copy_from_slice(&BACKGROUND_PIXEL);
+    }
+}
+
+fn fill_frame(framebuffer: &mut [u8], color: [u8; 4]) {
+    for pixel in framebuffer.chunks_exact_mut(BYTES_PER_PIXEL) {
+        pixel.copy_from_slice(&color);
+    }
+}
+
+fn fill_rect(
+    framebuffer: &mut [u8],
+    framebuffer_width: u32,
+    framebuffer_height: u32,
+    x: u32,
+    y: u32,
+    width: u32,
+    height: u32,
+    color: [u8; 4],
+) {
+    let end_x = x.saturating_add(width).min(framebuffer_width);
+    let end_y = y.saturating_add(height).min(framebuffer_height);
+    let stride = usize::try_from(framebuffer_width).unwrap() * BYTES_PER_PIXEL;
+
+    for row in y..end_y {
+        let row_start = usize::try_from(row).unwrap() * stride;
+        for col in x..end_x {
+            let offset = row_start + (usize::try_from(col).unwrap() * BYTES_PER_PIXEL);
+            framebuffer[offset..offset + BYTES_PER_PIXEL].copy_from_slice(&color);
+        }
     }
 }
 

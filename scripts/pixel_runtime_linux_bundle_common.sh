@@ -54,7 +54,6 @@ find_runtime_file_in_closure() {
   return 1
 }
 
-stage_runtime_host_linux_bundle() {
 fill_linux_bundle_runtime_deps() {
   local bundle_dir bundle_lib_dir loader_name
   local -a dependency_queue

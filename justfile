@@ -332,6 +332,14 @@ pixel-root-check:
 pixel-drm-probe:
 	@scripts/pixel_drm_probe.sh
 
+# Run one static rooted-Pixel GPU probe case with the selected backend profile
+pixel-blitz-demo-static-drm-gpu-probe profile="gl":
+	@PIXEL_STATIC_GPU_PROFILE="{{profile}}" scripts/pixel_blitz_demo_static_drm_gpu_probe.sh
+
+# Run the static rooted-Pixel GPU probe matrix across the current default profiles
+pixel-blitz-demo-static-drm-gpu-matrix:
+	@scripts/pixel_blitz_demo_static_drm_gpu_probe.sh
+
 # Run the minimal Deno Core smoke binary on the rooted Pixel through the GNU runtime envelope
 pixel-runtime-deno-core-smoke:
 	@PIXEL_RUNTIME_LOG_PREFIX=pixel_runtime_deno_core_smoke PIXEL_RUNTIME_SUCCESS_LABEL='Pixel Deno Core runtime smoke' scripts/pixel_runtime_deno_core_smoke.sh

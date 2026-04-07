@@ -13,6 +13,7 @@ repo="$(repo_root)"
 bundle_dir="$(pixel_artifact_path shadow-blitz-demo-gnu)"
 bundle_out_link="$(pixel_dir)/shadow-blitz-demo-aarch64-linux-gnu-gpu-softbuffer-result"
 launcher_artifact="$(pixel_artifact_path run-shadow-blitz-demo-gpu-softbuffer)"
+openlog_preload_artifact="$(pixel_artifact_path shadow-openlog-preload.so)"
 package_system="${PIXEL_LINUX_BUILD_SYSTEM:-x86_64-linux}"
 package_ref="$repo#packages.${package_system}.shadow-blitz-demo-aarch64-linux-gnu-gpu-softbuffer"
 bundle_device_dir="$(pixel_runtime_linux_dir)"
@@ -107,25 +108,40 @@ EOF
   fi
 }
 
-stage_deno_core_linux_bundle "$package_ref" "$bundle_out_link" "$bundle_dir" "shadow-blitz-demo"
+stage_openlog_preload() {
+  "$SCRIPT_DIR/pixel_build_openlog_preload.sh"
+  mkdir -p "$bundle_dir/lib"
+  cp -L "$openlog_preload_artifact" "$bundle_dir/lib/shadow-openlog-preload.so"
+}
 
+stage_runtime_host_linux_bundle "$package_ref" "$bundle_out_link" "$bundle_dir" "shadow-blitz-demo"
+
+chmod -R u+w "$bundle_dir" 2>/dev/null || true
+stage_openlog_preload
 copy_runtime_libs_from_package_output
 copy_optional_tree_from_closure "lib/dri" || true
 copy_optional_tree_from_closure "share/vulkan/icd.d" || true
 copy_optional_tree_from_closure "share/glvnd/egl_vendor.d" || true
 rewrite_bundle_driver_manifests
 flatten_bundle_file_symlinks
+chmod -R u+w "$bundle_dir" 2>/dev/null || true
 fill_linux_bundle_runtime_deps "$bundle_dir"
 
 cat >"$launcher_artifact" <<EOF
 #!/system/bin/sh
 DIR=\$(cd "\$(dirname "\$0")" && pwd)
 
+export HOME="\${HOME:-\$DIR/home}"
+export XDG_CACHE_HOME="\${XDG_CACHE_HOME:-\$HOME/.cache}"
+export XDG_CONFIG_HOME="\${XDG_CONFIG_HOME:-\$HOME/.config}"
+export MESA_SHADER_CACHE_DIR="\${MESA_SHADER_CACHE_DIR:-\$XDG_CACHE_HOME/mesa}"
 export LD_LIBRARY_PATH="\$DIR/lib\${LD_LIBRARY_PATH:+:\$LD_LIBRARY_PATH}"
 export LIBGL_DRIVERS_PATH="\$DIR/lib/dri\${LIBGL_DRIVERS_PATH:+:\$LIBGL_DRIVERS_PATH}"
 export __EGL_VENDOR_LIBRARY_DIRS="\$DIR/share/glvnd/egl_vendor.d"
 export WGPU_BACKEND="\${WGPU_BACKEND:-vulkan}"
 export VK_ICD_FILENAMES="\$DIR/share/vulkan/icd.d/freedreno_icd.aarch64.json"
+
+mkdir -p "\$HOME" "\$XDG_CACHE_HOME" "\$XDG_CONFIG_HOME" "\$MESA_SHADER_CACHE_DIR"
 
 exec "\$DIR/lib/$PIXEL_RUNTIME_STAGE_LOADER_NAME" --library-path "\$DIR/lib" "\$DIR/shadow-blitz-demo" "\$@"
 EOF

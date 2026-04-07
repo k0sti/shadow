@@ -1,4 +1,4 @@
-use std::{env, fs, path::PathBuf, sync::Arc, time::Instant};
+use std::{env, path::PathBuf, sync::Arc, time::Instant};
 
 use blitz_dom::{DocumentConfig, FontContext};
 use blitz_html::{HtmlDocument, HtmlProvider};
@@ -20,7 +20,7 @@ pub const FRAME_HTML: &str = r#"
 
       body {
         overflow: hidden;
-        font-family: "Google Sans", "Roboto", "Droid Sans", "Noto Sans", "DejaVu Sans", sans-serif;
+        font-family: "Google Sans", "Roboto", "Droid Sans", "Noto Sans", sans-serif;
       }
 
       #shadow-blitz-root {
@@ -97,7 +97,7 @@ pub fn template_document() -> HtmlDocument {
         html_parser_provider: Some(Arc::new(HtmlProvider) as _),
         ..Default::default()
     };
-    if let Some(font_ctx) = platform_font_context() {
+    if let Some(font_ctx) = android_font_context() {
         config.font_ctx = Some(font_ctx);
     }
 
@@ -107,16 +107,6 @@ pub fn template_document() -> HtmlDocument {
         start.elapsed().as_millis()
     );
     document
-}
-
-fn platform_font_context() -> Option<FontContext> {
-    if let Some(font_ctx) = android_font_context() {
-        return Some(font_ctx);
-    }
-    if cfg!(target_os = "linux") {
-        return host_font_context();
-    }
-    None
 }
 
 fn android_font_context() -> Option<FontContext> {
@@ -159,24 +149,6 @@ fn android_font_context() -> Option<FontContext> {
             Some(font_ctx)
         }
     }
-}
-
-fn host_font_context() -> Option<FontContext> {
-    let font_paths = host_font_paths();
-    if font_paths.is_empty() {
-        eprintln!("[shadow-blitz-demo] host-font-loading skipped: no font files found");
-        return None;
-    }
-
-    let start = Instant::now();
-    let mut font_ctx = FontContext::new();
-    font_ctx.collection.load_fonts_from_paths(&font_paths);
-    eprintln!(
-        "[shadow-blitz-demo] registered-host-font-files count={} elapsed_ms={}",
-        font_paths.len(),
-        start.elapsed().as_millis()
-    );
-    Some(font_ctx)
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -237,59 +209,4 @@ fn android_curated_font_paths() -> Vec<PathBuf> {
     }
 
     font_paths
-}
-
-fn host_font_dirs() -> Vec<PathBuf> {
-    let mut font_dirs = vec![
-        PathBuf::from("/run/current-system/sw/share/X11/fonts"),
-        PathBuf::from("/run/current-system/sw/share/fonts"),
-        PathBuf::from("/usr/share/fonts"),
-        PathBuf::from("/usr/local/share/fonts"),
-        PathBuf::from("/System/Library/Fonts"),
-        PathBuf::from("/Library/Fonts"),
-    ];
-
-    if let Some(home) = env::var_os("HOME") {
-        let home = PathBuf::from(home);
-        font_dirs.push(home.join(".nix-profile/share/X11/fonts"));
-        font_dirs.push(home.join(".nix-profile/share/fonts"));
-        font_dirs.push(home.join("Library/Fonts"));
-    }
-
-    font_dirs.retain(|path| path.is_dir());
-    font_dirs.sort();
-    font_dirs.dedup();
-    font_dirs
-}
-
-fn host_font_paths() -> Vec<PathBuf> {
-    let mut font_paths = Vec::new();
-    for dir in host_font_dirs() {
-        collect_font_paths(&dir, &mut font_paths);
-    }
-    font_paths.sort();
-    font_paths.dedup();
-    font_paths
-}
-
-fn collect_font_paths(dir: &PathBuf, font_paths: &mut Vec<PathBuf>) {
-    let Ok(entries) = fs::read_dir(dir) else {
-        return;
-    };
-
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if path.is_dir() {
-            collect_font_paths(&path, font_paths);
-            continue;
-        }
-
-        let Some(extension) = path.extension().and_then(|value| value.to_str()) else {
-            continue;
-        };
-        let extension = extension.to_ascii_lowercase();
-        if matches!(extension.as_str(), "ttf" | "otf" | "ttc" | "otb") {
-            font_paths.push(path);
-        }
-    }
 }

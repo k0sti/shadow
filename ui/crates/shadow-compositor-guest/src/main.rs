@@ -89,6 +89,7 @@ struct ShadowGuestCompositor {
     exit_on_client_disconnect: bool,
     exit_on_first_dma_buffer: bool,
     selftest_drm: bool,
+    boot_splash_drm: bool,
     kms_display: Option<kms::KmsDisplay>,
     last_frame_size: Option<(u32, u32)>,
     last_buffer_signature: Option<String>,
@@ -139,6 +140,7 @@ impl ShadowGuestCompositor {
             )
             .is_some(),
             selftest_drm: std::env::var_os("SHADOW_GUEST_COMPOSITOR_SELFTEST_DRM").is_some(),
+            boot_splash_drm: std::env::var_os("SHADOW_GUEST_COMPOSITOR_BOOT_SPLASH_DRM").is_some(),
             kms_display: None,
             last_frame_size: None,
             last_buffer_signature: None,
@@ -674,6 +676,15 @@ impl ShadowGuestCompositor {
         self.publish_frame(&frame, "selftest-frame-generated");
     }
 
+    fn run_boot_splash(&mut self) {
+        let Some(display) = self.ensure_kms_display() else {
+            return;
+        };
+        let (panel_width, panel_height) = display.dimensions();
+        let frame = kms::build_boot_splash_frame(panel_width, panel_height);
+        self.publish_frame(&frame, "boot-splash-frame-generated");
+    }
+
     fn take_surface_buffer(
         &self,
         surface: &WlSurface,
@@ -1002,6 +1013,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             return Ok(());
         }
     } else {
+        if state.boot_splash_drm {
+            tracing::info!("[shadow-guest-compositor] boot-splash-drm enabled");
+            state.run_boot_splash();
+        }
         state.spawn_client()?;
     }
     event_loop.run(None, &mut state, |_| {})?;

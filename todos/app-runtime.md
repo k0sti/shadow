@@ -126,7 +126,9 @@ Living note. Revise it as we learn. Do not treat this as a fixed contract.
   - `WGPU_BACKEND=gl` works on the rooted Pixel through the softbuffer path, but Mesa still falls back to surfaceless `swrast`, so this is a functional device proof, not true hardware acceleration.
   - `WGPU_BACKEND=vulkan` still fails inside `libvulkan_freedreno.so` at `vkEnumeratePhysicalDevices`, so Turnip / Freedreno Vulkan is still the real device blocker.
   - `just pixel-drm-probe` now shows why the default DRM render-node path is suspect on this phone: both `/dev/dri/card0` and `/dev/dri/renderD128` report `name=msm_drm` with `syncobj value=0`, and `timeline-syncobj` returns `EINVAL`. That matches Turnip's own `DRM_CAP_SYNCOBJ` requirement and strongly suggests the rooted Pixel's Linux DRM node is too old for the current Mesa/Turnip DRM path.
-  - The rooted Pixel runtime app lane now also runs on `gpu_softbuffer`: cold first frame is still bad at about `8.3s`, but once the app is already on screen the rooted device now rerenders in about `37ms` GPU-softbuffer time and about `75ms` end-to-end from touch-signal detection to presented frame. That is good enough for interactive feel, even though the path is still software-backed and not true hardware acceleration.
+  - The rooted Pixel runtime app lane still runs on `gpu_softbuffer`, but that remains a slow software-backed probe path under Mesa `swrast`, not the best operator UX.
+  - The current default Pixel runtime demo path is the plain CPU renderer. After removing the startup-only hitmap scan, skipping Android font-directory loading on device, and deleting the duplicate 40ms poll/touch timers, the rooted Pixel now reaches first visible app frame in about `0.68s` and auto-click-to-visible-update in about `0.35s` on the real panel.
+  - Phase 1 observability is now in place too: the client emits compact `gpu-summary-*` markers and each rooted runtime run writes `gpu-summary.json` with renderer/backend classification plus first-frame and click-to-updated-frame latency so we can judge GPU experiments without hand-parsing raw logs.
 
 ## Open Questions
 

@@ -44,6 +44,9 @@ required_markers_raw="${PIXEL_GUEST_REQUIRED_MARKERS-}"
 required_marker_timeout_secs="${PIXEL_GUEST_REQUIRED_MARKER_TIMEOUT_SECS-$client_marker_timeout_secs}"
 frame_checkpoint_timeout_secs="${PIXEL_GUEST_FRAME_CHECKPOINT_TIMEOUT_SECS-20}"
 restore_checkpoint_timeout_secs="${PIXEL_GUEST_RESTORE_CHECKPOINT_TIMEOUT_SECS-20}"
+session_exit_timeout_secs="${PIXEL_GUEST_SESSION_EXIT_TIMEOUT_SECS-15}"
+runtime_summary_renderer="${PIXEL_RUNTIME_SUMMARY_RENDERER-}"
+guest_client_env_quoted=""
 logcat_pid=""
 session_pid=""
 session_status=""
@@ -175,6 +178,10 @@ if ! pixel_require_runtime_artifacts; then
 fi
 "$SCRIPT_DIR/pixel_push.sh"
 
+if [[ -n "$guest_client_env" ]]; then
+  guest_client_env_quoted="$(printf '%q' "$guest_client_env")"
+fi
+
 pixel_capture_props "$serial" "$run_dir/device-props.txt"
 pixel_capture_processes "$serial" "$run_dir/processes-before.txt"
 pixel_adb "$serial" logcat -c || true
@@ -186,7 +193,7 @@ phone_script="$(
 $(pixel_takeover_stop_services_script)
 rm -rf $runtime_dir && mkdir -p $runtime_dir && chmod 700 $runtime_dir && rm -f $frame_path
 ${guest_precreate_dirs:+for prep_dir in $guest_precreate_dirs; do mkdir -p "\$prep_dir"; done}
-${session_timeout_secs:+timeout $session_timeout_secs }env ${guest_session_env:+$guest_session_env }SHADOW_SESSION_MODE=guest-ui SHADOW_RUNTIME_DIR=$runtime_dir SHADOW_GUEST_COMPOSITOR_BIN=$compositor_dst SHADOW_GUEST_CLIENT=$client_dst SHADOW_GUEST_COMPOSITOR_TRANSPORT=$guest_transport SHADOW_GUEST_COMPOSITOR_ENABLE_DRM=1 ${guest_selftest_drm:+SHADOW_GUEST_COMPOSITOR_SELFTEST_DRM=$guest_selftest_drm }${compositor_exit_on_first_frame:+SHADOW_GUEST_COMPOSITOR_EXIT_ON_FIRST_FRAME=$compositor_exit_on_first_frame }${compositor_exit_on_client_disconnect:+SHADOW_GUEST_COMPOSITOR_EXIT_ON_CLIENT_DISCONNECT=$compositor_exit_on_client_disconnect }${client_exit_on_configure:+SHADOW_GUEST_CLIENT_EXIT_ON_CONFIGURE=$client_exit_on_configure }${client_linger_ms:+SHADOW_GUEST_CLIENT_LINGER_MS=$client_linger_ms }${guest_client_env:+SHADOW_GUEST_CLIENT_ENV=$guest_client_env }SHADOW_GUEST_FRAME_PATH=$frame_path RUST_LOG=shadow_compositor_guest=info,shadow_blitz_demo=info,smithay=warn $session_dst
+${session_timeout_secs:+timeout $session_timeout_secs }env ${guest_session_env:+$guest_session_env }SHADOW_SESSION_MODE=guest-ui SHADOW_RUNTIME_DIR=$runtime_dir SHADOW_GUEST_COMPOSITOR_BIN=$compositor_dst SHADOW_GUEST_CLIENT=$client_dst SHADOW_GUEST_COMPOSITOR_TRANSPORT=$guest_transport SHADOW_GUEST_COMPOSITOR_ENABLE_DRM=1 ${guest_selftest_drm:+SHADOW_GUEST_COMPOSITOR_SELFTEST_DRM=$guest_selftest_drm }${compositor_exit_on_first_frame:+SHADOW_GUEST_COMPOSITOR_EXIT_ON_FIRST_FRAME=$compositor_exit_on_first_frame }${compositor_exit_on_client_disconnect:+SHADOW_GUEST_COMPOSITOR_EXIT_ON_CLIENT_DISCONNECT=$compositor_exit_on_client_disconnect }${client_exit_on_configure:+SHADOW_GUEST_CLIENT_EXIT_ON_CONFIGURE=$client_exit_on_configure }${client_linger_ms:+SHADOW_GUEST_CLIENT_LINGER_MS=$client_linger_ms }${guest_client_env_quoted:+SHADOW_GUEST_CLIENT_ENV=$guest_client_env_quoted }SHADOW_GUEST_FRAME_PATH=$frame_path RUST_LOG=shadow_compositor_guest=info,shadow_blitz_demo=info,smithay=warn $session_dst
 status=\$?
 ${restore_delay_secs:+sleep $restore_delay_secs}
 $(if [[ -n "$restore_android" ]]; then pixel_takeover_start_services_script; fi)
@@ -275,10 +282,19 @@ else
 fi
 
 if [[ -z "${session_status:-}" ]]; then
-  set +e
-  wait "$session_pid"
-  session_status="$?"
-  set -e
+  if pixel_wait_for_condition "$session_exit_timeout_secs" 1 ! session_still_running; then
+    set +e
+    wait "$session_pid"
+    session_status="$?"
+    set -e
+  else
+    checkpoint_note "session still running after success window; forcing cleanup"
+    kill "$session_pid" >/dev/null 2>&1 || true
+    wait "$session_pid" >/dev/null 2>&1 || session_status="$?"
+    if [[ -n "$restore_android" ]]; then
+      restore_android_now || true
+    fi
+  fi
 fi
 
 set +e
@@ -355,6 +371,13 @@ pixel_write_status_json "$run_dir/status.json" \
   success="$([[ "$session_ok" == true && "$verify_status" -eq 0 && "$presented" == true ]] && echo true || echo false)"
 
 cat "$run_dir/status.json"
+
+if [[ -n "$runtime_summary_renderer" ]]; then
+  python3 "$SCRIPT_DIR/pixel_runtime_summary.py" \
+    "$run_dir" \
+    --renderer "$runtime_summary_renderer" \
+    --output "$run_dir/gpu-summary.json"
+fi
 
 if [[ "$startup_ok" != true || "$session_ok" != true || "$verify_status" -ne 0 || "$presented" != true ]]; then
   if [[ -n "$failure_message" ]]; then

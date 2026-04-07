@@ -6,17 +6,104 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/pixel_common.sh"
 ensure_bootimg_shell "$@"
 
-"$SCRIPT_DIR/pixel_build.sh"
+default_turnip_tarball="$(pixel_dir)/vendor/turnip_26.1.0-devel-20260404_debian_trixie_arm64.tar.gz"
+default_mesa_tarball="$(pixel_dir)/vendor/mesa-for-android-container_26.1.0-devel-20260404_debian_trixie_arm64.tar.gz"
+if [[ -z "${PIXEL_VENDOR_MESA_TARBALL-}" && -f "$default_mesa_tarball" ]]; then
+  PIXEL_VENDOR_MESA_TARBALL="$default_mesa_tarball"
+  export PIXEL_VENDOR_MESA_TARBALL
+fi
+if [[ -z "${PIXEL_VENDOR_TURNIP_TARBALL-}" && -f "$default_turnip_tarball" ]]; then
+  PIXEL_VENDOR_TURNIP_TARBALL="$default_turnip_tarball"
+  export PIXEL_VENDOR_TURNIP_TARBALL
+fi
 
-: "${PIXEL_RUNTIME_APP_RENDERER:=gpu_softbuffer}"
+if [[ -z "${PIXEL_RUNTIME_APP_RENDERER-}" ]]; then
+  if [[ -n "${PIXEL_VENDOR_TURNIP_TARBALL-}" ]]; then
+    PIXEL_RUNTIME_APP_RENDERER="gpu_softbuffer"
+  else
+    PIXEL_RUNTIME_APP_RENDERER="cpu"
+  fi
+fi
 
-guest_client_artifact="$(pixel_blitz_demo_artifact)"
-guest_client_dst="$(pixel_blitz_demo_dst)"
+build_include_guest_client=1
+if [[ "$PIXEL_RUNTIME_APP_RENDERER" == "gpu_softbuffer" || "$PIXEL_RUNTIME_APP_RENDERER" == "gpu" ]]; then
+  build_include_guest_client=0
+fi
+
+PIXEL_BUILD_INCLUDE_GUEST_CLIENT="$build_include_guest_client" \
+  "$SCRIPT_DIR/pixel_build.sh"
+
+guest_client_artifact="$(pixel_guest_client_artifact)"
+guest_client_dst="$(pixel_guest_client_dst)"
 runtime_prepare_extra_env=()
+runtime_gpu_profile="${PIXEL_RUNTIME_APP_GPU_PROFILE-}"
+
+runtime_gpu_profile_lines() {
+  local profile="$1"
+  case "$profile" in
+    "")
+      return 0
+      ;;
+    gl)
+      printf '%s\n' \
+        'WGPU_BACKEND=gl' \
+        "SHADOW_LINUX_LD_PRELOAD=$(pixel_runtime_linux_dir)/lib/shadow-openlog-preload.so"
+      ;;
+    gl_kgsl)
+      printf '%s\n' \
+        'WGPU_BACKEND=gl' \
+        'MESA_LOADER_DRIVER_OVERRIDE=kgsl' \
+        'TU_DEBUG=noconform' \
+        "SHADOW_LINUX_LD_PRELOAD=$(pixel_runtime_linux_dir)/lib/shadow-openlog-preload.so"
+      ;;
+    vulkan_drm)
+      printf '%s\n' \
+        'WGPU_BACKEND=vulkan' \
+        "SHADOW_LINUX_LD_PRELOAD=$(pixel_runtime_linux_dir)/lib/shadow-openlog-preload.so"
+      ;;
+    vulkan_kgsl)
+      printf '%s\n' \
+        'WGPU_BACKEND=vulkan' \
+        'MESA_LOADER_DRIVER_OVERRIDE=kgsl' \
+        'TU_DEBUG=noconform' \
+        "SHADOW_LINUX_LD_PRELOAD=$(pixel_runtime_linux_dir)/lib/shadow-openlog-preload.so"
+      ;;
+    vulkan_kgsl_first)
+      printf '%s\n' \
+        'WGPU_BACKEND=vulkan' \
+        'MESA_LOADER_DRIVER_OVERRIDE=kgsl' \
+        'TU_DEBUG=noconform' \
+        "SHADOW_LINUX_LD_PRELOAD=$(pixel_runtime_linux_dir)/lib/shadow-openlog-preload.so" \
+        'SHADOW_OPENLOG_DENY_DRI=1'
+      ;;
+    *)
+      echo "pixel_runtime_app_drm: unsupported PIXEL_RUNTIME_APP_GPU_PROFILE: $profile" >&2
+      return 1
+      ;;
+  esac
+}
 
 case "$PIXEL_RUNTIME_APP_RENDERER" in
   cpu)
-    "$SCRIPT_DIR/pixel_build_blitz_demo.sh"
+    PIXEL_BLITZ_RENDERER=cpu "$SCRIPT_DIR/pixel_build_guest_client.sh"
+    ;;
+  gpu)
+    "$SCRIPT_DIR/pixel_prepare_blitz_demo_gpu_bundle.sh"
+    guest_client_artifact="$(pixel_artifact_path run-shadow-blitz-demo-gpu)"
+    guest_client_dst="$(pixel_runtime_linux_dir)/run-shadow-blitz-demo"
+    runtime_prepare_extra_env=(
+      "PIXEL_RUNTIME_EXTRA_BUNDLE_ARTIFACT_DIR=$(pixel_artifact_path shadow-blitz-demo-gpu-gnu)"
+    )
+    if [[ -z "$runtime_gpu_profile" ]]; then
+      if [[ -n "${PIXEL_VENDOR_TURNIP_TARBALL-}" ]]; then
+        runtime_gpu_profile="vulkan_kgsl_first"
+      else
+        runtime_gpu_profile="gl"
+      fi
+    fi
+    ;;
+  hybrid)
+    PIXEL_BLITZ_RENDERER=hybrid "$SCRIPT_DIR/pixel_build_guest_client.sh"
     ;;
   gpu_softbuffer)
     "$SCRIPT_DIR/pixel_prepare_blitz_demo_gpu_softbuffer_bundle.sh"
@@ -46,13 +133,15 @@ runtime_config_dir="$runtime_home_dir/.config"
 
 runtime_guest_env=$(
   cat <<EOF
+SHADOW_BLITZ_DEMO_MODE=runtime
 SHADOW_BLITZ_RUNTIME_EXIT_DELAY_MS=$PIXEL_BLITZ_RUNTIME_EXIT_DELAY_MS
 SHADOW_BLITZ_RAW_POINTER_FALLBACK=1
 SHADOW_BLITZ_TOUCH_ANYWHERE_TARGET=counter
 SHADOW_BLITZ_TOUCH_ACTIVATE_ON_DOWN=1
 SHADOW_BLITZ_TOUCH_SIGNAL_PATH=$touch_signal_path
 SHADOW_BLITZ_DEBUG_OVERLAY=0
-SHADOW_BLITZ_ANDROID_FONTS=curated
+SHADOW_BLITZ_ANDROID_FONTS=${SHADOW_BLITZ_ANDROID_FONTS:-curated}
+SHADOW_BLITZ_GPU_SUMMARY=1
 SHADOW_RUNTIME_APP_BUNDLE_PATH=$(pixel_runtime_app_bundle_dst)
 SHADOW_RUNTIME_HOST_BINARY_PATH=$(pixel_runtime_host_launcher_dst)
 HOME=$runtime_home_dir
@@ -60,9 +149,22 @@ XDG_CACHE_HOME=$runtime_cache_dir
 XDG_CONFIG_HOME=$runtime_config_dir
 EOF
 )
-if [[ "$PIXEL_RUNTIME_APP_RENDERER" == "gpu_softbuffer" ]]; then
-  runtime_guest_env="${runtime_guest_env}"$'\n'"WGPU_BACKEND=${WGPU_BACKEND:-gl}"
+if [[ "$PIXEL_RUNTIME_APP_RENDERER" == "gpu_softbuffer" || "$PIXEL_RUNTIME_APP_RENDERER" == "gpu" ]]; then
   runtime_guest_env="${runtime_guest_env}"$'\n'"MESA_SHADER_CACHE_DIR=$runtime_cache_dir/mesa"
+  if [[ "$PIXEL_RUNTIME_APP_RENDERER" == "gpu" ]]; then
+    while IFS= read -r env_line; do
+      [[ -n "$env_line" ]] || continue
+      runtime_guest_env="${runtime_guest_env}"$'\n'"$env_line"
+    done < <(runtime_gpu_profile_lines "$runtime_gpu_profile")
+  elif [[ -n "${PIXEL_VENDOR_TURNIP_TARBALL-}" ]]; then
+    runtime_guest_env="${runtime_guest_env}"$'\n'"WGPU_BACKEND=${WGPU_BACKEND:-vulkan}"
+    runtime_guest_env="${runtime_guest_env}"$'\n'"MESA_LOADER_DRIVER_OVERRIDE=${MESA_LOADER_DRIVER_OVERRIDE:-kgsl}"
+    runtime_guest_env="${runtime_guest_env}"$'\n'"TU_DEBUG=${TU_DEBUG:-noconform}"
+    runtime_guest_env="${runtime_guest_env}"$'\n'"SHADOW_LINUX_LD_PRELOAD=$(pixel_runtime_linux_dir)/lib/shadow-openlog-preload.so"
+    runtime_guest_env="${runtime_guest_env}"$'\n'"SHADOW_OPENLOG_DENY_DRI=${SHADOW_OPENLOG_DENY_DRI:-1}"
+  else
+    runtime_guest_env="${runtime_guest_env}"$'\n'"WGPU_BACKEND=${WGPU_BACKEND:-gl}"
+  fi
 fi
 if [[ -n "$extra_guest_env" ]]; then
   runtime_guest_env="${runtime_guest_env}"$'\n'"${extra_guest_env}"
@@ -72,6 +174,7 @@ runtime_guest_env="$(printf '%s\n' "$runtime_guest_env" | tr '\n' ' ' | sed 's/[
 runtime_session_env=$(
   cat <<EOF
 SHADOW_GUEST_TOUCH_SIGNAL_PATH=$touch_signal_path
+SHADOW_GUEST_COMPOSITOR_BOOT_SPLASH_DRM=1
 EOF
 )
 if [[ -n "$extra_session_env" ]]; then
@@ -98,4 +201,5 @@ PIXEL_GUEST_SESSION_TIMEOUT_SECS="$PIXEL_GUEST_SESSION_TIMEOUT_SECS" \
 PIXEL_GUEST_CLIENT_ENV="$runtime_guest_env" \
 PIXEL_GUEST_SESSION_ENV="$runtime_session_env" \
 PIXEL_GUEST_PRECREATE_DIRS="$runtime_home_dir $runtime_cache_dir $runtime_cache_dir/mesa $runtime_config_dir" \
+PIXEL_RUNTIME_SUMMARY_RENDERER="$PIXEL_RUNTIME_APP_RENDERER" \
   "$SCRIPT_DIR/pixel_guest_ui_drm.sh"

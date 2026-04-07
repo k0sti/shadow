@@ -4,7 +4,7 @@ use std::{
     sync::mpsc::{channel, Receiver, Sender},
     task::{Context, Waker},
     thread,
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use blitz_dom::{DocGuard, DocGuardMut, Document};
@@ -13,7 +13,7 @@ use blitz_traits::events::UiEvent;
 use serde::{Deserialize, Serialize};
 
 use crate::frame::template_document;
-use crate::log::runtime_log;
+use crate::log::{runtime_log, runtime_wall_ms};
 use crate::runtime_session::{RuntimeDispatchEvent, RuntimePointerEvent, RuntimeSession};
 
 const STYLE_SELECTOR: &str = "#shadow-blitz-style";
@@ -121,6 +121,7 @@ impl RuntimeDocument {
     }
 
     fn apply_render(&mut self) {
+        let render_start = Instant::now();
         let debug_overlay_html = self.debug_overlay_html();
         let mut mutator = self.inner.mutate();
         mutator.set_inner_html(
@@ -134,8 +135,22 @@ impl RuntimeDocument {
             mutator.set_inner_html(self.frame_nodes.debug_id, "");
         }
         drop(mutator);
-        self.log_target_hitmap(&self.touch_signal_target_id());
+        runtime_log(format!(
+            "apply-render-dom-updated elapsed_ms={}",
+            render_start.elapsed().as_millis()
+        ));
+        if debug_target_hitmap_enabled() {
+            self.log_target_hitmap(&self.touch_signal_target_id());
+            runtime_log(format!(
+                "apply-render-target-hitmap elapsed_ms={}",
+                render_start.elapsed().as_millis()
+            ));
+        }
         self.debug_dump_render_state();
+        runtime_log(format!(
+            "apply-render-complete elapsed_ms={}",
+            render_start.elapsed().as_millis()
+        ));
     }
 
     fn handle_runtime_ui_event(&mut self, event: UiEvent) {
@@ -368,8 +383,11 @@ impl RuntimeDocument {
         };
 
         runtime_log(format!(
-            "runtime-dispatch-start source={} type={} target={}",
-            source, event.event_type, event.target_id
+            "runtime-dispatch-start source={} type={} target={} wall_ms={}",
+            source,
+            event.event_type,
+            event.target_id,
+            runtime_wall_ms()
         ));
         let payload = runtime_session.dispatch(event.clone())?;
         self.replace_document(payload);
@@ -377,8 +395,11 @@ impl RuntimeDocument {
         self.refresh_debug_overlay();
         self.redraw_requested = true;
         runtime_log(format!(
-            "runtime-event-dispatched source={} type={} target={}",
-            source, event.event_type, event.target_id
+            "runtime-event-dispatched source={} type={} target={} wall_ms={}",
+            source,
+            event.event_type,
+            event.target_id,
+            runtime_wall_ms()
         ));
         Ok(true)
     }
@@ -508,7 +529,10 @@ impl RuntimeDocument {
     }
 
     fn ensure_touch_signal_timer_started(&mut self, task_context: Option<&Context<'_>>) {
-        if self.touch_signal_timer_started || self.touch_signal_path.is_none() {
+        if self.touch_signal_timer_started
+            || self.touch_signal_path.is_none()
+            || !touch_signal_timer_enabled()
+        {
             return;
         }
         let Some(task_context) = task_context else {
@@ -834,6 +858,17 @@ fn debug_overlay_enabled() -> bool {
     !matches!(
         env::var("SHADOW_BLITZ_DEBUG_OVERLAY").ok().as_deref(),
         Some("0") | Some("false") | Some("off")
+    )
+}
+
+fn debug_target_hitmap_enabled() -> bool {
+    env::var_os("SHADOW_BLITZ_DEBUG_TARGET_HITMAP").is_some()
+}
+
+fn touch_signal_timer_enabled() -> bool {
+    matches!(
+        env::var("SHADOW_BLITZ_TOUCH_SIGNAL_TIMER").ok().as_deref(),
+        Some("1") | Some("true") | Some("on")
     )
 }
 
