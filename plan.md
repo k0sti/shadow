@@ -34,13 +34,13 @@ Living plan. Revise it as we learn. Do not treat this as a fixed contract.
 
 - [ ] Backend decision proved on hardware.
   Compare Linux-direct playback against a native Android/bionic bridge during rooted takeover and choose the shipped path.
-- [ ] App-facing audio API agreed.
+- [x] App-facing audio API agreed.
   Land a small handle-based `Shadow.os.audio` contract before writing platform code.
-- [ ] Host/mock backend.
+- [x] Host/mock backend.
   Add a mock or no-op backend so app code and host smokes can land before Pixel audio is fully wired.
 - [ ] Pixel audio bridge MVP.
   Build the native Android/bionic bridge, point it at a staged MP3, and prove audible playback through the normal device route.
-- [ ] Runtime host extension.
+- [x] Runtime host extension.
   Add a `runtime-audio-host` crate/ops and inject `Shadow.os.audio` into `shadow-runtime-host`.
 - [ ] Asset pipeline.
   Copy audio assets during app bundling and expose stable file URIs or manifest IDs.
@@ -59,9 +59,9 @@ Living plan. Revise it as we learn. Do not treat this as a fixed contract.
   Preferred shipped shape: `shadow-audio-bridge` native daemon plus local socket. Demo fallback: `app_process` with a tiny Java entrypoint.
 - [ ] Lock the MVP API.
   Prefer `createPlayer`, `play`, `pause`, `stop`, `release`, and `getStatus` over raw PCM streaming for v0.
-- [ ] Add one demo app.
+- [x] Add one demo app.
   Create `runtime/app-sound-smoke/app.tsx` with Play, Pause, Stop, Loop, and visible status/error state.
-- [ ] Add one operator command.
+- [x] Add one operator command.
   Add a `just runtime-app-sound-smoke` host path and a `just pixel-runtime-app-sound-drm` rooted device path.
 
 ## Implementation Notes
@@ -77,5 +77,10 @@ Living plan. Revise it as we learn. Do not treat this as a fixed contract.
 - The first Linux-direct spike stays intentionally narrow: synthesized PCM tone, ALSA device candidates discovered from `/proc/asound/pcm`, copied `share/alsa` and an optional `lib/alsa-lib` plugin dir into the GNU bundle, and JSON summary capture under a dedicated Pixel run dir.
 - The GNU launcher for the audio spike must not `chroot`; the process needs the device's real `/dev/snd` and `/proc/asound` surfaces to stay visible.
 - The probe must not count proxy or hostless PCM success as "sound works." On this device, the actual audible proof came from `MultiMedia1` / `plughw:0,0` after applying the speaker route controls, while `AFE-PROXY` accepted PCM without audible output.
+- The first runtime audio slice should stay tone-backed. It proves `Shadow.os.audio` end-to-end without pretending file decode is solved; file or MP3-backed sources are the next seam after the tone helper is stable.
+- The rooted Pixel runtime lane cannot stay `chroot`ed if it needs Linux-direct audio. The sound-specific launcher has to execute in the real device root so the runtime host and its helper can keep `/dev/snd` and `/proc/asound`.
+- The safest regression boundary is a sound-only no-`chroot` launcher. Keep the existing runtime-app launcher behavior unchanged for non-audio apps until the broader Pixel runtime lane is revalidated on the real phone.
+- `runtime-audio-host` now owns the first durable contract: `createPlayer`, `play`, `pause`, `stop`, `release`, and `getStatus`, with a memory backend on host and a `linux_spike` backend on the rooted Pixel lane.
+- The current rooted Pixel proof is now app-level and audible: the sound demo auto-clicked `play`, `Shadow.os.audio` spawned `run-shadow-linux-audio-spike`, and the device speaker emitted the tone during the rooted runtime session.
 - If we need a shipped native path, Android’s current guidance is to target Oboe or AAudio rather than new OpenSL ES designs.
 - Start with file or URI playback, not PCM streaming. If we later need synthesis or latency-critical SFX, add a separate streaming/SFX API instead of overloading the MP3 path.

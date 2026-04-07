@@ -18,6 +18,11 @@ host_bundle_out_link="$(pixel_dir)/shadow-runtime-host-aarch64-linux-gnu-result"
 host_binary_name="shadow-runtime-host"
 host_launcher_artifact="$host_bundle_dir/run-shadow-runtime-host"
 package_ref="$repo#shadow-runtime-host-aarch64-linux-gnu"
+audio_enabled="${PIXEL_RUNTIME_ENABLE_LINUX_AUDIO:-0}"
+audio_package_ref="$repo#shadow-linux-audio-spike-aarch64-linux-gnu"
+audio_out_link="$(pixel_dir)/shadow-linux-audio-spike-aarch64-linux-gnu-result"
+audio_binary_name="shadow-linux-audio-spike"
+audio_launcher_artifact="$host_bundle_dir/run-$audio_binary_name"
 extra_bundle_dir="${PIXEL_RUNTIME_EXTRA_BUNDLE_ARTIFACT_DIR-}"
 host_bundle_manifest_path="$host_bundle_dir/.bundle-manifest.json"
 runtime_manifest_path="$host_bundle_dir/.runtime-bundle-manifest.json"
@@ -64,8 +69,12 @@ host_bundle_source_fingerprint="$(
     "$package_ref" \
     "$repo/flake.nix" \
     "$repo/flake.lock" \
+    "audio_enabled=$audio_enabled" \
+    "audio_package_ref=$audio_package_ref" \
     "$repo/rust/shadow-runtime-host" \
     "$repo/rust/shadow-runtime-host/Cargo.lock" \
+    "$repo/rust/runtime-audio-host" \
+    "$repo/rust/shadow-linux-audio-spike" \
     "$repo/rust/runtime-nostr-host" \
     "$repo/rust/vendor/temporal_rs" \
     "$SCRIPT_DIR/pixel_prepare_runtime_app_artifacts.sh" \
@@ -77,16 +86,43 @@ if [[ "${PIXEL_FORCE_LINUX_BUNDLE_REBUILD-}" != 1 ]] \
   && [[ -d "$host_bundle_dir" ]] \
   && [[ -x "$host_launcher_artifact" ]] \
   && [[ -f "$host_bundle_dir/$host_binary_name" ]] \
+  && { [[ "$audio_enabled" != "1" ]] \
+    || { [[ -x "$audio_launcher_artifact" ]] && [[ -f "$host_bundle_dir/$audio_binary_name" ]]; }; } \
   && runtime_bundle_manifest_matches "$host_bundle_manifest_path" "$host_bundle_source_fingerprint"; then
   host_bundle_cache_hit=1
   printf 'Runtime host bundle cacheHit -> %s\n' "$host_bundle_dir"
 else
   stage_runtime_host_linux_bundle "$package_ref" "$host_bundle_out_link" "$host_bundle_dir" "$host_binary_name"
+  if [[ "$audio_enabled" == "1" ]]; then
+    nix build --accept-flake-config "$audio_package_ref" --out-link "$audio_out_link"
+    cp "$audio_out_link/bin/$audio_binary_name" "$host_bundle_dir/$audio_binary_name"
+    chmod 0755 "$host_bundle_dir/$audio_binary_name"
+    append_runtime_closure_from_package_ref "$audio_package_ref"
+  fi
   fill_linux_bundle_runtime_deps "$host_bundle_dir"
+  if [[ "$audio_enabled" == "1" ]]; then
+    copy_closure_dir_into_bundle "share/alsa" "$host_bundle_dir/share/alsa"
+    mkdir -p "$host_bundle_dir/lib/alsa-lib"
+    copy_closure_dir_into_bundle "lib/alsa-lib" "$host_bundle_dir/lib/alsa-lib" optional
+  fi
 
   if [[ -n "$extra_bundle_dir" ]]; then
     chmod -R u+w "$host_bundle_dir" 2>/dev/null || true
     cp -R "$extra_bundle_dir"/. "$host_bundle_dir"/
+  fi
+
+  if [[ "$audio_enabled" == "1" ]]; then
+    cat >"$audio_launcher_artifact" <<EOF
+#!/system/bin/sh
+DIR=\$(cd "\$(dirname "\$0")" && pwd)
+export ALSA_CONFIG_PATH="\$DIR/share/alsa/alsa.conf"
+export ALSA_CONFIG_DIR="\$DIR/share/alsa"
+export ALSA_CONFIG_UCM="\$DIR/share/alsa/ucm"
+export ALSA_CONFIG_UCM2="\$DIR/share/alsa/ucm2"
+export ALSA_PLUGIN_DIR="\$DIR/lib/alsa-lib"
+exec "\$DIR/lib/$PIXEL_RUNTIME_STAGE_LOADER_NAME" --library-path "\$DIR/lib" "\$DIR/$audio_binary_name" "\$@"
+EOF
+    chmod 0755 "$audio_launcher_artifact"
   fi
 
   cat >"$host_launcher_artifact" <<EOF
@@ -96,6 +132,17 @@ if [ "\$#" -ne 2 ] || [ "\$1" != "--session" ]; then
   echo "usage: $host_binary_name --session <bundle-path>" >&2
   exit 64
 fi
+EOF
+
+if [[ "$audio_enabled" == "1" ]]; then
+  cat >>"$host_launcher_artifact" <<EOF
+export SHADOW_RUNTIME_AUDIO_BACKEND="\${SHADOW_RUNTIME_AUDIO_BACKEND:-linux_spike}"
+export SHADOW_RUNTIME_AUDIO_SPIKE_BINARY="\$DIR/run-$audio_binary_name"
+export SHADOW_RUNTIME_BUNDLE_DIR="\$DIR"
+exec "\$DIR/lib/$PIXEL_RUNTIME_STAGE_LOADER_NAME" --library-path "\$DIR/lib" "\$DIR/$host_binary_name" "\$@"
+EOF
+else
+  cat >>"$host_launcher_artifact" <<EOF
 if command -v chroot >/dev/null 2>&1; then
   case "\$2" in
     "\$DIR"/*) set -- "\$1" "/\${2#\$DIR/}" ;;
@@ -104,7 +151,8 @@ if command -v chroot >/dev/null 2>&1; then
 fi
 exec "\$DIR/lib/$PIXEL_RUNTIME_STAGE_LOADER_NAME" --library-path "\$DIR/lib" "\$DIR/$host_binary_name" "\$@"
 EOF
-  chmod 0755 "$host_launcher_artifact"
+fi
+chmod 0755 "$host_launcher_artifact"
 
   write_runtime_bundle_manifest \
     "$host_bundle_manifest_path" \

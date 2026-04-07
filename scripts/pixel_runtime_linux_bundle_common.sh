@@ -206,6 +206,59 @@ copy_runtime_optional_lib() {
   cp "$lib_source_path" "$bundle_lib_dir/$name"
 }
 
+copy_closure_dir_into_bundle() {
+  local relative_path destination required source_path closure_path found_any
+  relative_path="$1"
+  destination="$2"
+  required="${3:-required}"
+  found_any=0
+
+  for closure_path in "${PIXEL_RUNTIME_CLOSURE_PATHS[@]}"; do
+    source_path="$closure_path/$relative_path"
+    if [[ ! -d "$source_path" ]]; then
+      continue
+    fi
+
+    found_any=1
+    mkdir -p "$destination"
+    chmod -R u+w "$destination" 2>/dev/null || true
+    rsync -rL --chmod=Du=rwx,Dgo=rx,Fu=rw,Fgo=r "$source_path"/. "$destination"/
+
+    python3 - "$destination" "$relative_path" "${PIXEL_RUNTIME_CLOSURE_PATHS[@]}" <<'PY'
+import os
+import sys
+
+destination = sys.argv[1]
+relative_path = sys.argv[2]
+closure_paths = sys.argv[3:]
+target_root = "/" + relative_path
+rewrite_prefixes = [os.path.join(path, relative_path) for path in closure_paths]
+for root, _, files in os.walk(destination):
+    for name in files:
+        path = os.path.join(root, name)
+        try:
+            with open(path, "r", encoding="utf-8") as handle:
+                data = handle.read()
+        except UnicodeDecodeError:
+            continue
+        rewritten = data
+        for rewrite_prefix in rewrite_prefixes:
+            rewritten = rewritten.replace(rewrite_prefix, target_root)
+        if rewritten != data:
+            with open(path, "w", encoding="utf-8") as handle:
+                handle.write(rewritten)
+PY
+  done
+
+  if [[ "$found_any" -ne 1 ]]; then
+    if [[ "$required" == "optional" ]]; then
+      return 0
+    fi
+    echo "pixel runtime bundle: missing closure dir: $relative_path" >&2
+    return 1
+  fi
+}
+
 binary_interpreter() {
   local binary
   binary="$1"

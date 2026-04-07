@@ -304,6 +304,16 @@ pixel-runtime-app-nostr-timeline-drm-hold:
 pixel-gpu-warm:
 	@just pixel-runtime-app-nostr-timeline-gpu-warm
 
+# Run the runtime audio API smoke under the current host runtime backend
+runtime-app-sound-smoke:
+	@SHADOW_RUNTIME_APP_INPUT_PATH=runtime/app-sound-smoke/app.tsx \
+	SHADOW_RUNTIME_APP_CACHE_DIR=build/runtime/app-sound-smoke \
+	scripts/runtime_app_sound_smoke.sh
+
+# Run the runtime sound demo on the rooted Pixel through the guest compositor DRM path
+pixel-runtime-app-sound-drm:
+	@scripts/pixel_runtime_app_sound_drm.sh
+
 # Restore the Android display stack after a hold-mode rooted takeover run
 pixel-restore-android:
 	@scripts/pixel_restore_android.sh

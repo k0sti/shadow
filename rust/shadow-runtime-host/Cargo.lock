@@ -1638,6 +1638,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "runtime-audio-host"
+version = "0.1.0"
+dependencies = [
+ "deno_core",
+ "deno_error",
+ "libc",
+ "serde",
+]
+
+[[package]]
 name = "runtime-nostr-host"
 version = "0.1.0"
 dependencies = [
@@ -1857,6 +1867,7 @@ name = "shadow-runtime-host"
 version = "0.1.0"
 dependencies = [
  "deno_core",
+ "runtime-audio-host",
  "runtime-nostr-host",
  "serde",
  "serde_json",

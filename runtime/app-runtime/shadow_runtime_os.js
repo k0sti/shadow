@@ -24,11 +24,25 @@ const INITIAL_KIND1_NOTES = [
 ];
 
 export function ensureShadowRuntimeOs() {
-  if (globalThis.Shadow?.os?.nostr) {
+  const shadow = globalThis.Shadow ?? {};
+  const os = shadow.os ?? {};
+  const nextOs = { ...os };
+  let changed = false;
+
+  if (!nextOs.nostr) {
+    nextOs.nostr = createMockNostrApi();
+    changed = true;
+  }
+  if (!nextOs.audio) {
+    nextOs.audio = createMockAudioApi();
+    changed = true;
+  }
+
+  if (!changed) {
     return globalThis.Shadow;
   }
 
-  return installShadowRuntimeOs(createMockNostrOs());
+  return installShadowRuntimeOs(nextOs);
 }
 
 export function listKind1(query = {}) {
@@ -47,12 +61,44 @@ export function publishEphemeralKind1(request) {
   return getNostrApi().publishEphemeralKind1(request);
 }
 
+export function createPlayer(request = {}) {
+  return getAudioApi().createPlayer(request);
+}
+
+export function play(request) {
+  return getAudioApi().play(request);
+}
+
+export function pause(request) {
+  return getAudioApi().pause(request);
+}
+
+export function stop(request) {
+  return getAudioApi().stop(request);
+}
+
+export function release(request) {
+  return getAudioApi().release(request);
+}
+
+export function getStatus(request) {
+  return getAudioApi().getStatus(request);
+}
+
 function getNostrApi() {
   const nostr = globalThis.Shadow?.os?.nostr;
   if (!nostr) {
     throw new Error("Shadow.os.nostr is not installed");
   }
   return nostr;
+}
+
+function getAudioApi() {
+  const audio = globalThis.Shadow?.os?.audio;
+  if (!audio) {
+    throw new Error("Shadow.os.audio is not installed");
+  }
+  return audio;
 }
 
 function installShadowRuntimeOs(os) {
@@ -63,91 +109,258 @@ function installShadowRuntimeOs(os) {
   return globalThis.Shadow;
 }
 
-function createMockNostrOs() {
+function createMockNostrApi() {
   let events = INITIAL_KIND1_NOTES.map(cloneKind1Event);
   let latestTimestamp = Math.max(...events.map((event) => event.created_at));
   let sequence = events.length;
 
   return {
-    nostr: {
-      listKind1(query = {}) {
-        return queryKind1Events(events, query);
-      },
-      syncKind1(request = {}) {
-        const relayUrls = Array.isArray(request?.relayUrls) &&
-            request.relayUrls.length > 0
-          ? request.relayUrls.map(String)
-          : ["wss://relay.primal.net/", "wss://relay.damus.io/"];
-        return {
-          fetchedCount: 0,
-          importedCount: 0,
-          relayUrls,
-        };
-      },
-      publishKind1(request) {
-        const content = typeof request?.content === "string"
-          ? request.content.trim()
-          : "";
-        if (!content) {
-          throw new TypeError("nostr.publishKind1 requires non-empty content");
-        }
-
-        sequence += 1;
-        latestTimestamp += 1;
-        const event = {
-          content,
-          created_at: latestTimestamp,
-          id: `shadow-note-${sequence}`,
-          kind: 1,
-          pubkey: typeof request?.pubkey === "string" && request.pubkey
-            ? request.pubkey
-            : DEFAULT_PUBLISH_PUBKEY,
-        };
-        events = [event, ...events];
-        return cloneKind1Event(event);
-      },
-      async publishEphemeralKind1(request) {
-        const content = typeof request?.content === "string"
-          ? request.content.trim()
-          : "";
-        if (!content) {
-          throw new TypeError(
-            "nostr.publishEphemeralKind1 requires non-empty content",
-          );
-        }
-
-        sequence += 1;
-        latestTimestamp += 1;
-        const relayUrls = Array.isArray(request?.relayUrls) &&
-            request.relayUrls.length > 0
-          ? request.relayUrls.map(String)
-          : ["wss://relay.primal.net/", "wss://relay.damus.io/"];
-        const eventIdHex = `mock-gm-${sequence.toString().padStart(4, "0")}`;
-        const noteId = `note1mockgm${sequence.toString().padStart(4, "0")}`;
-        const primalUrl = `https://primal.net/e/${noteId}`;
-        const event = {
-          content,
-          created_at: latestTimestamp,
-          id: eventIdHex,
-          kind: 1,
-          pubkey: DEFAULT_PUBLISH_PUBKEY,
-        };
-        events = [event, ...events];
-
-        return {
-          content,
-          createdAt: latestTimestamp,
-          failedRelays: [],
-          id: eventIdHex,
-          noteId,
-          npub: DEFAULT_PUBLISH_PUBKEY,
-          primalUrl,
-          publishedRelays: relayUrls,
-          qrRows: buildMockQrRows(primalUrl),
-          relayUrls,
-        };
-      },
+    listKind1(query = {}) {
+      return queryKind1Events(events, query);
     },
+    syncKind1(request = {}) {
+      const relayUrls = Array.isArray(request?.relayUrls) &&
+          request.relayUrls.length > 0
+        ? request.relayUrls.map(String)
+        : ["wss://relay.primal.net/", "wss://relay.damus.io/"];
+      return {
+        fetchedCount: 0,
+        importedCount: 0,
+        relayUrls,
+      };
+    },
+    publishKind1(request) {
+      const content = typeof request?.content === "string"
+        ? request.content.trim()
+        : "";
+      if (!content) {
+        throw new TypeError("nostr.publishKind1 requires non-empty content");
+      }
+
+      sequence += 1;
+      latestTimestamp += 1;
+      const event = {
+        content,
+        created_at: latestTimestamp,
+        id: `shadow-note-${sequence}`,
+        kind: 1,
+        pubkey: typeof request?.pubkey === "string" && request.pubkey
+          ? request.pubkey
+          : DEFAULT_PUBLISH_PUBKEY,
+      };
+      events = [event, ...events];
+      return cloneKind1Event(event);
+    },
+    async publishEphemeralKind1(request) {
+      const content = typeof request?.content === "string"
+        ? request.content.trim()
+        : "";
+      if (!content) {
+        throw new TypeError(
+          "nostr.publishEphemeralKind1 requires non-empty content",
+        );
+      }
+
+      sequence += 1;
+      latestTimestamp += 1;
+      const relayUrls = Array.isArray(request?.relayUrls) &&
+          request.relayUrls.length > 0
+        ? request.relayUrls.map(String)
+        : ["wss://relay.primal.net/", "wss://relay.damus.io/"];
+      const eventIdHex = `mock-gm-${sequence.toString().padStart(4, "0")}`;
+      const noteId = `note1mockgm${sequence.toString().padStart(4, "0")}`;
+      const primalUrl = `https://primal.net/e/${noteId}`;
+      const event = {
+        content,
+        created_at: latestTimestamp,
+        id: eventIdHex,
+        kind: 1,
+        pubkey: DEFAULT_PUBLISH_PUBKEY,
+      };
+      events = [event, ...events];
+
+      return {
+        content,
+        createdAt: latestTimestamp,
+        failedRelays: [],
+        id: eventIdHex,
+        noteId,
+        npub: DEFAULT_PUBLISH_PUBKEY,
+        primalUrl,
+        publishedRelays: relayUrls,
+        qrRows: buildMockQrRows(primalUrl),
+        relayUrls,
+      };
+    },
+  };
+}
+
+function createMockAudioApi() {
+  let nextId = 1;
+  const players = new Map();
+
+  return {
+    async createPlayer(request = {}) {
+      const source = normalizeAudioSource(request?.source);
+      const status = buildAudioStatus({
+        backend: "mock",
+        durationMs: source.durationMs,
+        frequencyHz: source.frequencyHz,
+        id: nextId,
+        state: "idle",
+      });
+      players.set(nextId, {
+        durationMs: source.durationMs,
+        elapsedBeforePauseMs: 0,
+        frequencyHz: source.frequencyHz,
+        finishedAtMs: null,
+        startedAtMs: null,
+        state: "idle",
+      });
+      nextId += 1;
+      return status;
+    },
+    async play(request = {}) {
+      const player = requireAudioPlayer(players, request?.id, "audio.play");
+      reconcileMockAudioPlayer(player);
+      if (player.state !== "playing") {
+        if (player.state === "paused") {
+          player.startedAtMs = Date.now();
+        } else {
+          player.startedAtMs = Date.now();
+          player.elapsedBeforePauseMs = 0;
+          player.finishedAtMs = null;
+        }
+        player.state = "playing";
+      }
+      return buildAudioStatusFromMockPlayer(request.id, player);
+    },
+    async pause(request = {}) {
+      const player = requireAudioPlayer(players, request?.id, "audio.pause");
+      reconcileMockAudioPlayer(player);
+      if (
+        player.state === "playing" && typeof player.startedAtMs === "number"
+      ) {
+        player.elapsedBeforePauseMs += Date.now() - player.startedAtMs;
+        player.startedAtMs = null;
+        player.state = "paused";
+      }
+      return buildAudioStatusFromMockPlayer(request.id, player);
+    },
+    async stop(request = {}) {
+      const player = requireAudioPlayer(players, request?.id, "audio.stop");
+      player.elapsedBeforePauseMs = 0;
+      player.finishedAtMs = null;
+      player.startedAtMs = null;
+      player.state = "stopped";
+      return buildAudioStatusFromMockPlayer(request.id, player);
+    },
+    async release(request = {}) {
+      const player = requireAudioPlayer(players, request?.id, "audio.release");
+      player.elapsedBeforePauseMs = 0;
+      player.finishedAtMs = null;
+      player.startedAtMs = null;
+      player.state = "released";
+      players.delete(request.id);
+      return buildAudioStatusFromMockPlayer(request.id, player);
+    },
+    async getStatus(request = {}) {
+      const player = requireAudioPlayer(
+        players,
+        request?.id,
+        "audio.getStatus",
+      );
+      reconcileMockAudioPlayer(player);
+      return buildAudioStatusFromMockPlayer(request.id, player);
+    },
+  };
+}
+
+function normalizeAudioSource(source) {
+  const kind = typeof source?.kind === "string" && source.kind.trim()
+    ? source.kind.trim()
+    : "tone";
+  if (kind !== "tone") {
+    throw new TypeError(
+      `audio.createPlayer does not support source kind: ${kind}`,
+    );
+  }
+
+  const durationMs = normalizePositiveNumber(
+    source?.durationMs,
+    2400,
+    "durationMs",
+  );
+  const frequencyHz = normalizePositiveNumber(
+    source?.frequencyHz,
+    440,
+    "frequencyHz",
+  );
+  return {
+    durationMs,
+    frequencyHz,
+    kind,
+  };
+}
+
+function normalizePositiveNumber(value, fallback, label) {
+  if (value == null) {
+    return fallback;
+  }
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+    throw new TypeError(`audio.createPlayer requires positive ${label}`);
+  }
+  return Math.round(value);
+}
+
+function requireAudioPlayer(players, id, opName) {
+  if (!Number.isInteger(id) || id <= 0 || !players.has(id)) {
+    throw new TypeError(`${opName} requires a known positive integer id`);
+  }
+  return players.get(id);
+}
+
+function reconcileMockAudioPlayer(player) {
+  if (player.state !== "playing" || typeof player.startedAtMs !== "number") {
+    return;
+  }
+
+  const elapsedMs = player.elapsedBeforePauseMs +
+    (Date.now() - player.startedAtMs);
+  if (elapsedMs < player.durationMs) {
+    return;
+  }
+
+  player.elapsedBeforePauseMs = player.durationMs;
+  player.finishedAtMs = Date.now();
+  player.startedAtMs = null;
+  player.state = "completed";
+}
+
+function buildAudioStatusFromMockPlayer(id, player) {
+  return buildAudioStatus({
+    backend: "mock",
+    durationMs: player.durationMs,
+    frequencyHz: player.frequencyHz,
+    id,
+    state: player.state,
+  });
+}
+
+function buildAudioStatus({
+  backend,
+  durationMs,
+  frequencyHz,
+  id,
+  state,
+}) {
+  return {
+    backend,
+    durationMs,
+    frequencyHz,
+    id,
+    sourceKind: "tone",
+    state,
   };
 }
 

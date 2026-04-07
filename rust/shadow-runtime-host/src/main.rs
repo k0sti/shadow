@@ -29,7 +29,10 @@ async fn run() -> Result<()> {
 async fn load_runtime(main_module: &Url) -> Result<JsRuntime> {
     let mut runtime = JsRuntime::new(RuntimeOptions {
         module_loader: Some(Rc::new(FsModuleLoader)),
-        extensions: vec![runtime_nostr_host::init_extension()],
+        extensions: vec![
+            runtime_nostr_host::init_extension(),
+            runtime_audio_host::init_extension(),
+        ],
         ..Default::default()
     });
 
@@ -102,13 +105,14 @@ async fn handle_session_request(
 
     let payload_json = execute_string_expr(runtime, &expr, "<session>").await?;
     match request {
-        SessionRequest::RenderIfDirty => serde_json::from_str(&payload_json)
-            .context("decode maybe runtime document payload"),
-        SessionRequest::Render | SessionRequest::Dispatch { .. } => serde_json::from_str::<
-            RuntimeDocumentPayload,
-        >(&payload_json)
-        .map(Some)
-        .context("decode runtime document payload"),
+        SessionRequest::RenderIfDirty => {
+            serde_json::from_str(&payload_json).context("decode maybe runtime document payload")
+        }
+        SessionRequest::Render | SessionRequest::Dispatch { .. } => {
+            serde_json::from_str::<RuntimeDocumentPayload>(&payload_json)
+                .map(Some)
+                .context("decode runtime document payload")
+        }
     }
 }
 
