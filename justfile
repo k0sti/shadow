@@ -252,6 +252,14 @@ pixel-shell-drm:
 pixel-shell-drm-hold:
 	@scripts/pixel_shell_drm_hold.sh
 
+# Send control requests to the rooted Pixel shell compositor
+pixel-shellctl *args='':
+	@scripts/pixel_shellctl.sh {{args}}
+
+# Prove timeline launch, home, and reopen on the rooted Pixel shell lane
+pixel-shell-timeline-smoke:
+	@scripts/pixel_shell_timeline_smoke.sh
+
 # Run one rooted-Pixel runtime direct-gpu probe case with the selected backend profile
 pixel-runtime-app-drm-gpu-probe profile="vulkan_kgsl_first":
 	@PIXEL_RUNTIME_GPU_RENDERER=gpu scripts/pixel_runtime_app_drm_gpu_probe.sh "{{profile}}"

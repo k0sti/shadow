@@ -388,6 +388,33 @@ pixel_root_file_nonempty() {
   pixel_root_shell "$serial" "[ -s '$path' ]"
 }
 
+pixel_root_socket_exists() {
+  local serial path
+  serial="$1"
+  path="$2"
+  pixel_root_shell "$serial" "[ -S '$path' ]"
+}
+
+pixel_shell_control_request() {
+  local serial request control_socket phone_script
+  serial="$1"
+  request="$2"
+  control_socket="$(pixel_shell_control_socket_path)"
+
+  phone_script=$(
+    cat <<EOF
+control_socket=$control_socket
+if [ ! -S "\$control_socket" ]; then
+  echo "pixel-shellctl: missing compositor control socket \$control_socket" >&2
+  exit 1
+fi
+printf '%s\n' $(printf '%q' "$request") | nc -U "\$control_socket"
+EOF
+  )
+
+  pixel_root_shell "$serial" "$phone_script"
+}
+
 pixel_wait_for_condition() {
   local timeout_secs sleep_secs deadline
   timeout_secs="$1"
@@ -506,6 +533,10 @@ pixel_runtime_dir() {
   printf '%s\n' "${PIXEL_RUNTIME_DIR:-/data/local/tmp/shadow-runtime}"
 }
 
+pixel_shell_control_socket_path() {
+  printf '%s/%s\n' "$(pixel_runtime_dir)" "shadow-control.sock"
+}
+
 pixel_runtime_linux_dir() {
   printf '%s\n' "${PIXEL_RUNTIME_LINUX_DIR:-/data/local/tmp/shadow-runtime-gnu}"
 }
@@ -548,6 +579,10 @@ pixel_drm_guest_runs_dir() {
 
 pixel_runtime_runs_dir() {
   printf '%s/runtime\n' "$(pixel_dir)"
+}
+
+pixel_shell_runs_dir() {
+  printf '%s/shell\n' "$(pixel_dir)"
 }
 
 pixel_touch_runs_dir() {
