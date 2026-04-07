@@ -72,7 +72,7 @@ const DEFAULT_DEMO_NOTES: DemoNoteConfig[] = [
 const SHELL_STYLE =
   'width:100%;height:100%;display:flex;flex-direction:column;align-items:stretch;overflow-y:auto;padding:24px 24px 40px;gap:20px;background:radial-gradient(circle at top, rgba(56, 189, 248, 0.16), transparent 36%),linear-gradient(180deg, #020617 0%, #082032 45%, #0f172a 100%);color:#e2e8f0;font:500 16px/1.45 "Google Sans","Roboto","Droid Sans","Noto Sans","DejaVu Sans",sans-serif;box-sizing:border-box';
 const HERO_STYLE =
-  "width:100%;display:flex;flex-direction:column;gap:18px;padding:28px 26px;border-radius:34px;background:rgba(2, 6, 23, 0.74);border:1px solid rgba(56, 189, 248, 0.18);box-shadow:0 28px 80px rgba(0, 0, 0, 0.3)";
+  "width:100%;display:flex;flex-direction:column;gap:18px;padding:6px 4px 4px";
 const EYEBROW_STYLE =
   "margin:0;color:#7dd3fc;font-size:13px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase";
 const TITLE_STYLE =
@@ -143,11 +143,7 @@ body {
   display: flex;
   flex-direction: column;
   gap: 18px;
-  padding: 28px 26px;
-  border-radius: 34px;
-  background: rgba(2, 6, 23, 0.74);
-  border: 1px solid rgba(56, 189, 248, 0.18);
-  box-shadow: 0 28px 80px rgba(0, 0, 0, 0.3);
+  padding: 6px 4px 4px;
 }
 
 .timeline-eyebrow {

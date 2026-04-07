@@ -3,7 +3,7 @@ use crate::color::Color;
 pub const WIDTH: f32 = 540.0;
 pub const HEIGHT: f32 = 1170.0;
 pub const APP_VIEWPORT_X: f32 = 0.0;
-pub const APP_VIEWPORT_Y: f32 = 52.0;
+pub const APP_VIEWPORT_Y: f32 = 64.0;
 pub const APP_VIEWPORT_WIDTH: f32 = WIDTH;
 pub const APP_VIEWPORT_HEIGHT: f32 = HEIGHT - APP_VIEWPORT_Y;
 
