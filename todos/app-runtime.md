@@ -16,6 +16,7 @@ Living plan. Revise it as we learn. Do not treat this as a fixed contract.
 - The direct rooted Pixel runtime-app scripts still exist, but they are now fallback/probe lanes rather than the main operator path.
 - Pixel shell runs can now either stop at home or auto-open `timeline` through that same shell lane.
 - `pixel-shellctl` now gives the rooted Pixel shell a reusable launch/home/state control seam once the compositor is live.
+- The rooted Pixel shell lifecycle lane is now green on at least one real device (`09051JEC202061`).
 - `just runtime-app-host-smokes` is now the truthful host proof surface.
 - The runtime viewport contract is now unified around the shell app viewport (`540x1106` today). Pixel fits that viewport into the real panel instead of using raw panel size as the app surface.
 - Host proofs already exist for focus, keyboard input, selection metadata, relay sync, and restart/cache reload.
@@ -54,7 +55,7 @@ Living plan. Revise it as we learn. Do not treat this as a fixed contract.
 - [x] Prove the existing host wheel / pan path and stop drag gestures from collapsing into synthetic runtime clicks.
 - [x] Add a Pixel shell-side app launch/control hook so `app=timeline` opens through the real shell path instead of only booting home.
 - [ ] Decide whether any app actually needs a JS-facing wheel/scroll event shape, now that host and VM/native scroll lanes are both proven.
-- [~] Add a real rooted-Pixel shell lifecycle proof (`timeline` -> home -> reopen) so the primary device lane is validated past first launch.
+- [x] Add a real rooted-Pixel shell lifecycle proof (`timeline` -> home -> reopen) so the primary device lane is validated past first launch.
 - [x] Re-check the VM shelve/reopen lane after the viewport cleanup and decide whether it needs extra runtime-specific assertions.
 
 ## Implementation Notes
@@ -84,7 +85,10 @@ Living plan. Revise it as we learn. Do not treat this as a fixed contract.
 - 2026-04-07: The rooted Pixel shell now has a matching control helper and lifecycle smoke harness.
   - `pixel-shellctl.sh` talks to `/data/local/tmp/shadow-runtime/shadow-control.sock` over rooted `adb shell` plus Toybox `nc -U`, and `state --json` mirrors the VM control-state shape.
   - `pixel-shell-timeline-smoke.sh` now starts the rooted shell in hold mode, waits for `timeline` to launch through the real shell path, sends `home`, reopens `timeline`, and checks the same focused/mapped/shelved state transitions as the VM smoke.
-  - Live rooted-Pixel execution of that new smoke is still pending in this turn because two rooted Pixels are attached and no specific serial was chosen for an intrusive display-takeover run.
+- 2026-04-07: The rooted Pixel shell lifecycle smoke is live-green on `09051JEC202061`.
+  - `PIXEL_SERIAL=09051JEC202061 just pixel-shell-timeline-smoke` passed and wrote its run log under `build/pixel/shell/20260407T230414Z/`.
+  - The smoke proved `timeline` launch, `home` shelving, and `timeline` reopen through the real rooted shell lane, then restored Android cleanly.
+  - The first live failure was a smoke bug, not a shell bug: lifecycle timeouts were starting before host-side artifact prep finished. The smoke now waits for the rooted `shadow-control.sock` to exist before starting lifecycle assertions.
 
 ## Current Runtime Contract
 

@@ -13,6 +13,7 @@ run_log="$run_dir/pixel-shell-timeline-smoke.log"
 state_after_open_path="$run_dir/state-after-open.json"
 state_after_home_path="$run_dir/state-after-home.json"
 state_after_reopen_path="$run_dir/state-after-reopen.json"
+control_socket_path="$(pixel_shell_control_socket_path)"
 session_pid=""
 latest_state_json=""
 
@@ -125,6 +126,10 @@ wait_for_state() {
   exit 1
 }
 
+shell_control_socket_ready() {
+  pixel_root_socket_exists "$serial" "$control_socket_path"
+}
+
 PIXEL_SERIAL="$serial" "$SCRIPT_DIR/pixel_restore_android.sh" >/dev/null 2>&1 || true
 
 (
@@ -133,7 +138,8 @@ PIXEL_SERIAL="$serial" "$SCRIPT_DIR/pixel_restore_android.sh" >/dev/null 2>&1 ||
 ) >"$run_log" 2>&1 &
 session_pid="$!"
 
-wait_for_state "timeline launch through rooted Pixel shell" 90 \
+wait_for_state "rooted Pixel shell control socket" 300 shell_control_socket_ready
+wait_for_state "timeline launch through rooted Pixel shell" 60 \
   state_matches timeline timeline '' '' timeline
 printf '%s\n' "$latest_state_json" >"$state_after_open_path"
 
