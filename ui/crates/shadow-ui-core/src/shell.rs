@@ -15,7 +15,10 @@ use crate::{
 };
 
 const PRESS_FLASH: Duration = Duration::from_millis(160);
-const STATUS_BAR_HEIGHT: f32 = 54.0;
+const STATUS_BAR_X: f32 = 16.0;
+const STATUS_BAR_Y: f32 = 10.0;
+const STATUS_BAR_WIDTH: f32 = WIDTH - 32.0;
+const STATUS_BAR_HEIGHT: f32 = 30.0;
 const CLOCK_CARD_Y: f32 = 124.0;
 const CLOCK_CARD_HEIGHT: f32 = 250.0;
 const APP_PANEL_Y: f32 = 420.0;
@@ -23,11 +26,6 @@ const APP_PANEL_HEIGHT: f32 = 640.0;
 const APP_ICON_SIZE: f32 = 96.0;
 const APP_LABEL_HEIGHT: f32 = 24.0;
 const APP_SUBTITLE_HEIGHT: f32 = 18.0;
-const APP_HEADER_Y: f32 = 86.0;
-const APP_HEADER_HEIGHT: f32 = 70.0;
-const APP_CHROME_BOTTOM_Y: f32 = APP_VIEWPORT_Y + APP_VIEWPORT_HEIGHT + 22.0;
-const APP_CHROME_BOTTOM_HEIGHT: f32 = 54.0;
-const APP_FRAME_SIDE_WIDTH: f32 = 18.0;
 const GRID_COLUMNS: usize = 4;
 const APP_GRID_SPACING_X: f32 = 18.0;
 const APP_GRID_STEP_X: f32 = APP_ICON_SIZE + APP_GRID_SPACING_X + 8.0;
@@ -227,112 +225,9 @@ impl ShellModel {
     fn app_scene(&self, status: &ShellStatus, app_id: AppId) -> Scene {
         let mut rects = Vec::new();
         let mut texts = Vec::new();
-        let app = find_app(app_id).expect("foreground app metadata");
-        let viewport = app_viewport_frame();
+        let _app = find_app(app_id).expect("foreground app metadata");
 
         build_status_bar(&mut rects, &mut texts, status);
-
-        rects.push(RoundedRect::new(
-            20.0,
-            APP_HEADER_Y,
-            500.0,
-            APP_HEADER_HEIGHT,
-            28.0,
-            SURFACE_GLASS.with_alpha(0.92),
-        ));
-        rects.push(RoundedRect::new(
-            392.0,
-            98.0,
-            98.0,
-            32.0,
-            16.0,
-            TEXT_PRIMARY.with_alpha(0.12),
-        ));
-
-        let frame_color = SURFACE.with_alpha(0.94);
-        rects.push(RoundedRect::new(
-            0.0,
-            viewport.y - 6.0,
-            APP_FRAME_SIDE_WIDTH,
-            viewport.h + 12.0,
-            0.0,
-            frame_color,
-        ));
-        rects.push(RoundedRect::new(
-            WIDTH - APP_FRAME_SIDE_WIDTH,
-            viewport.y - 6.0,
-            APP_FRAME_SIDE_WIDTH,
-            viewport.h + 12.0,
-            0.0,
-            frame_color,
-        ));
-        rects.push(RoundedRect::new(
-            APP_VIEWPORT_X,
-            viewport.y - 10.0,
-            APP_VIEWPORT_WIDTH,
-            12.0,
-            6.0,
-            frame_color,
-        ));
-        rects.push(RoundedRect::new(
-            20.0,
-            APP_CHROME_BOTTOM_Y,
-            500.0,
-            APP_CHROME_BOTTOM_HEIGHT,
-            26.0,
-            SURFACE_GLASS.with_alpha(0.92),
-        ));
-
-        texts.push(TextBlock {
-            content: app.title.to_string(),
-            left: 48.0,
-            top: 96.0,
-            width: 240.0,
-            height: 24.0,
-            size: 24.0,
-            line_height: 26.0,
-            align: TextAlign::Left,
-            weight: TextWeight::Semibold,
-            color: TEXT_PRIMARY,
-        });
-        texts.push(TextBlock {
-            content: app.subtitle.to_string(),
-            left: 48.0,
-            top: 122.0,
-            width: 220.0,
-            height: 16.0,
-            size: 12.0,
-            line_height: 14.0,
-            align: TextAlign::Left,
-            weight: TextWeight::Normal,
-            color: TEXT_MUTED,
-        });
-        texts.push(TextBlock {
-            content: "Warm".to_string(),
-            left: 392.0,
-            top: 106.0,
-            width: 98.0,
-            height: 18.0,
-            size: 14.0,
-            line_height: 16.0,
-            align: TextAlign::Center,
-            weight: TextWeight::Semibold,
-            color: TEXT_PRIMARY,
-        });
-        texts.push(TextBlock {
-            content: app.lifecycle_hint.to_string(),
-            left: 52.0,
-            top: APP_CHROME_BOTTOM_Y + 16.0,
-            width: 436.0,
-            height: 22.0,
-            size: 13.0,
-            line_height: 15.0,
-            align: TextAlign::Center,
-            weight: TextWeight::Normal,
-            color: TEXT_MUTED,
-        });
-
-        build_navigation_bar(&mut rects, true);
 
         Scene {
             clear_color: crate::color::Color::rgba(0, 0, 0, 0),
@@ -519,22 +414,22 @@ fn build_status_bar(
     status: &ShellStatus,
 ) {
     rects.push(RoundedRect::new(
-        16.0,
-        14.0,
-        508.0,
+        STATUS_BAR_X,
+        STATUS_BAR_Y,
+        STATUS_BAR_WIDTH,
         STATUS_BAR_HEIGHT,
-        24.0,
+        STATUS_BAR_HEIGHT * 0.5,
         SURFACE_GLASS,
     ));
 
     texts.push(TextBlock {
         content: status.time_label.clone(),
         left: 34.0,
-        top: 27.0,
+        top: 16.0,
         width: 100.0,
-        height: 24.0,
-        size: 18.0,
-        line_height: 20.0,
+        height: 18.0,
+        size: 14.0,
+        line_height: 16.0,
         align: TextAlign::Left,
         weight: TextWeight::Semibold,
         color: TEXT_PRIMARY,
@@ -543,7 +438,7 @@ fn build_status_bar(
     let battery_fill = (status.battery_percent.min(100) as f32 / 100.0).max(0.12);
     rects.push(RoundedRect::new(
         450.0,
-        29.0,
+        18.0,
         22.0,
         12.0,
         3.0,
@@ -551,7 +446,7 @@ fn build_status_bar(
     ));
     rects.push(RoundedRect::new(
         473.0,
-        32.0,
+        21.0,
         4.0,
         6.0,
         2.0,
@@ -574,7 +469,7 @@ fn build_status_bar(
         };
         rects.push(RoundedRect::new(
             408.0 + index as f32 * 10.0,
-            35.0 - index as f32 * 4.0,
+            24.0 - index as f32 * 4.0,
             7.0,
             6.0 + index as f32 * 3.0,
             3.0,
@@ -907,10 +802,10 @@ fn app_frame(index: usize) -> Frame {
 
 fn home_indicator_frame() -> Frame {
     Frame {
-        x: 186.0,
-        y: 1098.0,
-        w: 168.0,
-        h: 26.0,
+        x: STATUS_BAR_X,
+        y: STATUS_BAR_Y,
+        w: STATUS_BAR_WIDTH,
+        h: STATUS_BAR_HEIGHT,
     }
 }
 
