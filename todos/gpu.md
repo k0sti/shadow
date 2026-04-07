@@ -339,3 +339,39 @@ Living plan. Revise it as we learn. Do not treat this as a fixed contract.
   - GPU requirement is partially satisfied today:
     - real hardware-backed client GPU is proved
     - true end-to-end GPU presentation is not yet proved
+
+## Further Improvements
+
+- Build infrastructure:
+  - a real native `aarch64-linux` build server would materially improve operator UX
+  - current first-run delays are often build-time, not render-time:
+    - Nix + cross-target Rust + GPU bundle assembly
+    - remote Linux builder churn
+    - occasional heavy dependency rebuilds
+  - the most useful improvement would be:
+    - stable native ARM Linux builder
+    - persistent binary cache for the Pixel GPU artifacts
+    - prebuilt vendor GPU bundle artifacts keyed by fingerprint
+
+- Operator ergonomics:
+  - add an explicit `warm-gpu-artifacts` command that only prepares:
+    - runtime host bundle
+    - GPU client bundle
+    - vendor Mesa / Turnip overlay bundle
+  - make the hold-mode commands print whether they are:
+    - cache hit
+    - rebuilding
+    - pushing
+    - already on device
+
+- Performance:
+  - treat first visible frame and incremental latency separately
+  - keep incremental updates as the primary product metric
+  - only chase startup below `500ms` after the default GPU lane is reproducible and boring
+
+- Architecture cleanup:
+  - once the current GPU lane is merged and in use, remove stale CPU-only assumptions from:
+    - Pixel runtime launch scripts
+    - old probe branches
+    - redundant fallback env handling
+  - keep one proven operator lane and one experimental direct-present lane, not many half-maintained variants
