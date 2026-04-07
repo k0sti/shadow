@@ -161,6 +161,9 @@ Living plan. Revise it as we learn. Do not treat this as a fixed contract.
     - finish the first two shell interaction regressions on device:
       - drag inside the app viewport should scroll, not text-select
       - switching from one runtime app to another should not keep stacking full GPU clients
+    - restore compose-field keyboard behavior on device
+      - regression fixed in part by giving `shadow-compositor-guest` a real keyboard seat and seat focus
+      - if soft keyboard still does not appear after that, the remaining gap is likely missing Wayland text-input / input-method support on the rooted guest-compositor path
 
 ## What Is Proven vs. What Is Not
 
@@ -232,6 +235,14 @@ Living plan. Revise it as we learn. Do not treat this as a fixed contract.
   - chosen fix:
     - keep the Pixel shell single-live-app for now
     - terminate non-target runtime apps before launching/focusing another app
+- The shell keyboard regression had an immediate compositor-side bug.
+  - Root cause:
+    - `shadow-compositor-guest` created only a pointer seat and never set seat keyboard focus when app windows were focused
+  - fix:
+    - add a keyboard capability to the guest seat
+    - set and clear Smithay keyboard focus alongside window activation
+  - remaining question:
+    - whether the rooted Pixel soft keyboard still needs explicit Wayland text-input/input-method support beyond correct seat focus
 
 ## Best Known Numbers
 

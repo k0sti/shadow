@@ -155,6 +155,7 @@ impl ShadowGuestCompositor {
         );
         let mut seat_state = SeatState::new();
         let mut seat = seat_state.new_wl_seat(&display_handle, "shadow-guest");
+        seat.add_keyboard(Default::default(), 200, 25).unwrap();
         seat.add_pointer();
         let control_socket_path =
             control::init_listener(event_loop).expect("create guest compositor control socket");
@@ -617,6 +618,9 @@ impl ShadowGuestCompositor {
     }
 
     fn focus_window(&mut self, window: Option<Window>) {
+        let keyboard = self.seat.get_keyboard().expect("seat keyboard");
+        let serial = SERIAL_COUNTER.next_serial();
+
         if let Some(window) = window {
             self.space.raise_element(&window, true);
             let focused_surface = window.toplevel().unwrap().wl_surface().clone();
@@ -627,6 +631,7 @@ impl ShadowGuestCompositor {
                 candidate.set_activated(is_active);
                 candidate.toplevel().unwrap().send_pending_configure();
             });
+            keyboard.set_focus(self, Some(focused_surface), serial);
             return;
         }
 
@@ -636,6 +641,7 @@ impl ShadowGuestCompositor {
         });
         self.focused_app = None;
         self.shell.set_foreground_app(None);
+        keyboard.set_focus(self, Option::<WlSurface>::None, serial);
     }
 
     fn focus_top_window(&mut self) {
