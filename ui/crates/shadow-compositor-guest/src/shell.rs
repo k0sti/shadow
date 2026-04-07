@@ -1,7 +1,9 @@
 use shadow_ui_core::scene::{
-    Scene, APP_VIEWPORT_HEIGHT, APP_VIEWPORT_WIDTH, APP_VIEWPORT_X, APP_VIEWPORT_Y,
+    RoundedRect, Scene, TextBlock, APP_VIEWPORT_HEIGHT, APP_VIEWPORT_WIDTH, APP_VIEWPORT_X,
+    APP_VIEWPORT_Y, HEIGHT, WIDTH,
 };
 use shadow_ui_software::SoftwareRenderer;
+use smithay::reexports::wayland_server::protocol::wl_shm;
 
 pub struct GuestShellSurface {
     width: u32,
@@ -15,6 +17,7 @@ pub struct AppFrame<'a> {
     pub width: u32,
     pub height: u32,
     pub stride: u32,
+    pub format: wl_shm::Format,
     pub pixels: &'a [u8],
 }
 
@@ -28,6 +31,18 @@ impl GuestShellSurface {
         }
     }
 
+    pub fn resize(&mut self, width: u32, height: u32) {
+        if self.width == width && self.height == height {
+            return;
+        }
+
+        self.width = width;
+        self.height = height;
+        self.renderer.resize(width, height);
+        self.pixels
+            .resize((width as usize) * (height as usize) * 4, 0);
+    }
+
     #[cfg(test)]
     pub fn render_scene(&mut self, scene: &Scene) -> &[u8] {
         self.render_scene_with_app_frame(scene, None)
@@ -38,7 +53,9 @@ impl GuestShellSurface {
         scene: &Scene,
         app_frame: Option<AppFrame<'_>>,
     ) -> &[u8] {
-        let scene_pixels = self.renderer.render(scene);
+        self.renderer.resize(self.width, self.height);
+        let scaled_scene = scale_scene(scene, self.width, self.height);
+        let scene_pixels = self.renderer.render(&scaled_scene);
         self.pixels.copy_from_slice(scene_pixels);
 
         if let Some(app_frame) = app_frame {
@@ -61,33 +78,42 @@ pub fn composite_app_frame(
         return;
     };
 
-    let copy_width = viewport_width.min(app_frame.width);
-    let copy_height = viewport_height.min(app_frame.height);
+    let copy_width = viewport_width.max(1);
+    let copy_height = viewport_height.max(1);
     let source_stride = app_frame.stride as usize;
     let target_stride = target_width as usize * 4;
     let source = app_frame.pixels;
 
     for row in 0..copy_height as usize {
         let target_row = viewport_y as usize + row;
-        let source_row = row;
+        let source_row = ((row as f32 / copy_height as f32) * app_frame.height as f32)
+            .floor()
+            .clamp(0.0, app_frame.height.saturating_sub(1) as f32)
+            as usize;
         for col in 0..copy_width as usize {
             let target_x = viewport_x as usize + col;
-            let source_x = col;
+            let source_x = ((col as f32 / copy_width as f32) * app_frame.width as f32)
+                .floor()
+                .clamp(0.0, app_frame.width.saturating_sub(1) as f32)
+                as usize;
             let target_index = target_row * target_stride + target_x * 4;
             let source_index = source_row * source_stride + source_x * 4;
             blend_bgra_pixel(
                 &mut target[target_index..target_index + 4],
                 &source[source_index..source_index + 4],
+                app_frame.format,
             );
         }
     }
 }
 
 fn viewport_bounds(target_width: u32, target_height: u32) -> Option<(u32, u32, u32, u32)> {
-    let x = APP_VIEWPORT_X.max(0.0).round() as u32;
-    let y = APP_VIEWPORT_Y.max(0.0).round() as u32;
-    let width = APP_VIEWPORT_WIDTH.max(0.0).round() as u32;
-    let height = APP_VIEWPORT_HEIGHT.max(0.0).round() as u32;
+    let scale_x = target_width as f32 / WIDTH;
+    let scale_y = target_height as f32 / HEIGHT;
+    let x = (APP_VIEWPORT_X * scale_x).max(0.0).round() as u32;
+    let y = (APP_VIEWPORT_Y * scale_y).max(0.0).round() as u32;
+    let width = (APP_VIEWPORT_WIDTH * scale_x).max(0.0).round() as u32;
+    let height = (APP_VIEWPORT_HEIGHT * scale_y).max(0.0).round() as u32;
 
     if x >= target_width || y >= target_height {
         return None;
@@ -98,11 +124,14 @@ fn viewport_bounds(target_width: u32, target_height: u32) -> Option<(u32, u32, u
     Some((x, y, width.min(max_width), height.min(max_height)))
 }
 
-fn blend_bgra_pixel(target: &mut [u8], source: &[u8]) {
+fn blend_bgra_pixel(target: &mut [u8], source: &[u8], format: wl_shm::Format) {
     let src_b = source[0] as f32 / 255.0;
     let src_g = source[1] as f32 / 255.0;
     let src_r = source[2] as f32 / 255.0;
-    let src_a = source[3] as f32 / 255.0;
+    let src_a = match format {
+        wl_shm::Format::Xrgb8888 => 1.0,
+        _ => source[3] as f32 / 255.0,
+    };
 
     if src_a <= 0.0 {
         return;
@@ -129,6 +158,44 @@ fn blend_bgra_pixel(target: &mut [u8], source: &[u8]) {
     target[1] = blend(src_g, dst_g);
     target[2] = blend(src_r, dst_r);
     target[3] = (out_a * 255.0).round().clamp(0.0, 255.0) as u8;
+}
+
+fn scale_scene(scene: &Scene, target_width: u32, target_height: u32) -> Scene {
+    let scale_x = target_width as f32 / WIDTH;
+    let scale_y = target_height as f32 / HEIGHT;
+    let text_scale = scale_x.min(scale_y);
+
+    Scene {
+        clear_color: scene.clear_color,
+        rects: scene
+            .rects
+            .iter()
+            .map(|rect| RoundedRect {
+                x: rect.x * scale_x,
+                y: rect.y * scale_y,
+                width: rect.width * scale_x,
+                height: rect.height * scale_y,
+                radius: rect.radius * text_scale,
+                color: rect.color,
+            })
+            .collect(),
+        texts: scene
+            .texts
+            .iter()
+            .map(|text| TextBlock {
+                content: text.content.clone(),
+                left: text.left * scale_x,
+                top: text.top * scale_y,
+                width: text.width * scale_x,
+                height: text.height * scale_y,
+                size: text.size * text_scale,
+                line_height: text.line_height * text_scale,
+                align: text.align,
+                weight: text.weight,
+                color: text.color,
+            })
+            .collect(),
+    }
 }
 
 #[cfg(test)]
@@ -158,6 +225,7 @@ mod tests {
             width: 2,
             height: 2,
             stride: 8,
+            format: wl_shm::Format::Argb8888,
             pixels: &[
                 0, 255, 0, 255, 0, 0, 255, 255, //
                 0, 0, 255, 255, 255, 255, 255, 255,
@@ -166,14 +234,31 @@ mod tests {
 
         composite_app_frame(&mut target, 4, 70, app_frame);
 
-        let viewport_origin = ((APP_VIEWPORT_Y as usize) * 4 * 4) + (APP_VIEWPORT_X as usize * 4);
+        let (_, viewport_y, _, _) = viewport_bounds(4, 70).expect("scaled viewport");
+        let viewport_origin = (viewport_y as usize) * 4 * 4;
         assert_eq!(
             &target[viewport_origin..viewport_origin + 4],
             &[0, 255, 0, 255]
         );
         assert_eq!(
             &target[viewport_origin + 4..viewport_origin + 8],
-            &[0, 0, 255, 255]
+            &[0, 255, 0, 255]
         );
+    }
+
+    #[test]
+    fn composite_app_frame_treats_xrgb_as_opaque() {
+        let mut target = vec![0u8; 4];
+        let app_frame = AppFrame {
+            width: 1,
+            height: 1,
+            stride: 4,
+            format: wl_shm::Format::Xrgb8888,
+            pixels: &[1, 2, 3, 0],
+        };
+
+        composite_app_frame(&mut target, 1, 1, app_frame);
+
+        assert_eq!(target, vec![1, 2, 3, 0]);
     }
 }

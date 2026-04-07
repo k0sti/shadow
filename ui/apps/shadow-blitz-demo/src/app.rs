@@ -32,6 +32,7 @@ use blitz_shell::{
     create_default_event_loop, BlitzShellEvent, BlitzShellProxy, View, WindowConfig,
 };
 use serde::Serialize;
+use std::borrow::Cow;
 use std::sync::mpsc::Receiver;
 use std::sync::Arc;
 use std::{env, thread, time::Duration};
@@ -157,10 +158,12 @@ impl DemoMode {
         }
     }
 
-    fn title(self) -> &'static str {
+    fn title(self) -> Cow<'static, str> {
         match self {
-            Self::Static => "Shadow Blitz Demo",
-            Self::Runtime => "Shadow Counter",
+            Self::Static => Cow::Borrowed("Shadow Blitz Demo"),
+            Self::Runtime => env::var("SHADOW_BLITZ_APP_TITLE")
+                .map(Cow::Owned)
+                .unwrap_or_else(|_| Cow::Borrowed("Shadow Counter")),
         }
     }
 
@@ -176,10 +179,12 @@ impl DemoMode {
     }
 
     #[cfg(target_os = "linux")]
-    fn wayland_app_id(self) -> &'static str {
+    fn wayland_app_id(self) -> Cow<'static, str> {
         match self {
-            Self::Static => BLITZ_DEMO_WAYLAND_APP_ID,
-            Self::Runtime => RUNTIME_DEMO_WAYLAND_APP_ID,
+            Self::Static => Cow::Borrowed(BLITZ_DEMO_WAYLAND_APP_ID),
+            Self::Runtime => env::var("SHADOW_BLITZ_WAYLAND_APP_ID")
+                .map(Cow::Owned)
+                .unwrap_or_else(|_| Cow::Borrowed(RUNTIME_DEMO_WAYLAND_APP_ID)),
         }
     }
 
@@ -189,10 +194,23 @@ impl DemoMode {
     }
 
     #[cfg(target_os = "linux")]
-    fn wayland_instance_name(self) -> &'static str {
+    fn wayland_instance_name(self) -> Cow<'static, str> {
         match self {
-            Self::Static => "shadow-blitz-demo",
-            Self::Runtime => "shadow-counter",
+            Self::Static => Cow::Borrowed("shadow-blitz-demo"),
+            Self::Runtime => env::var("SHADOW_BLITZ_WAYLAND_INSTANCE")
+                .map(Cow::Owned)
+                .or_else(|_| {
+                    env::var("SHADOW_BLITZ_WAYLAND_APP_ID").map(|app_id| {
+                        app_id
+                            .rsplit('.')
+                            .next()
+                            .filter(|segment| !segment.is_empty())
+                            .unwrap_or("shadow-counter")
+                            .to_string()
+                    })
+                })
+                .map(Cow::Owned)
+                .unwrap_or_else(|_| Cow::Borrowed("shadow-counter")),
         }
     }
 

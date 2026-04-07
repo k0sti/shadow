@@ -481,6 +481,12 @@ impl ShadowGuestCompositor {
         }
     }
 
+    fn shell_render_size(&mut self) -> (u32, u32) {
+        self.ensure_kms_display()
+            .map(|display| display.dimensions())
+            .unwrap_or((WIDTH.round() as u32, HEIGHT.round() as u32))
+    }
+
     fn shell_local_point(&self, position: Point<f64, Logical>) -> Option<(f32, f32)> {
         ((0.0..=WIDTH as f64).contains(&position.x) && (0.0..=HEIGHT as f64).contains(&position.y))
             .then_some((position.x as f32, position.y as f32))
@@ -525,11 +531,14 @@ impl ShadowGuestCompositor {
 
         let status = ShellStatus::demo(Local::now());
         let scene = self.shell.scene(&status);
+        let (render_width, render_height) = self.shell_render_size();
+        self.shell_surface.resize(render_width, render_height);
         let app_frame = self.focused_app.and_then(|app_id| {
             self.app_frames.get(&app_id).map(|frame| AppFrame {
                 width: frame.width,
                 height: frame.height,
                 stride: frame.stride,
+                format: frame.format,
                 pixels: &frame.pixels,
             })
         });
@@ -538,8 +547,8 @@ impl ShadowGuestCompositor {
             .render_scene_with_app_frame(&scene, app_frame)
             .to_vec();
         let frame = kms::captured_frame_from_pixels(
-            WIDTH.round() as u32,
-            HEIGHT.round() as u32,
+            render_width,
+            render_height,
             pixels,
             wl_shm::Format::Xrgb8888,
         )
@@ -913,7 +922,17 @@ impl ShadowGuestCompositor {
             frame_width,
             frame_height,
         )?;
-        Some((x, y).into())
+        if self.shell_enabled {
+            Some(
+                (
+                    x * f64::from(WIDTH) / f64::from(frame_width),
+                    y * f64::from(HEIGHT) / f64::from(frame_height),
+                )
+                    .into(),
+            )
+        } else {
+            Some((x, y).into())
+        }
     }
 
     fn signal_touch_event(&mut self, event: &touch::TouchInputEvent) {

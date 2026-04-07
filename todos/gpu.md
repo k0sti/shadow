@@ -78,16 +78,27 @@ Living plan. Revise it as we learn. Do not treat this as a fixed contract.
 - [x] Fast local gate is green after the font fix.
   - `just ui-check`
   - `just pre-commit`
-- [x] The outer guest-compositor shell/home substrate now boots on the real Pixel.
+- [x] The outer guest-compositor shell/home substrate now boots fullscreen on the real Pixel.
   - validated rooted run:
-    - `build/pixel/drm-guest/20260407T211034Z`
+    - `build/pixel/drm-guest/20260407T214327Z`
   - key markers:
-    - `[shadow-guest-compositor] shell-home-frame checksum=ca820ee8b8d600b7 size=540x1170`
+    - `[shadow-guest-compositor] shell-home-frame ... size=1080x2340`
+    - `[shadow-guest-compositor] frame-content-rect panel=1080x2340 frame=1080x2340 rect=1080x2340+0,0`
     - `[shadow-guest-compositor] presented-frame`
   - new operator hooks:
     - `just pixel-prepare-shell-runtime-artifacts`
     - `just pixel-shell-drm`
     - `just pixel-shell-drm-hold`
+- [x] Shell app launch now reaches full-panel composed app frames on the rooted Pixel path.
+  - validated rooted run:
+    - `build/pixel/drm-guest/20260407T214825Z`
+  - key markers after compositor control `launch timeline`:
+    - `[shadow-guest-compositor] captured-frame ... size=1080x2340`
+    - `[shadow-guest-compositor] frame-content-rect panel=1080x2340 frame=1080x2340 rect=1080x2340+0,0`
+    - `[shadow-guest-compositor] presented-frame`
+  - root causes fixed:
+    - shell scene was still published at logical `540x1170`, so KMS centered it instead of filling the panel
+    - shell app composition treated `Xrgb8888` child buffers like transparent-alpha content
 
 ### Not Done
 
@@ -145,6 +156,8 @@ Living plan. Revise it as we learn. Do not treat this as a fixed contract.
   - Remaining work is operator integration:
     - make `run <serial>` use this shell path
     - wire app launch/home UX on top of the new shell mode
+  - The remaining technical cleanup is narrower:
+    - revalidate app-specific Wayland app-id/title overrides on a fresh rooted run after the current shell launch path change
 
 ## What Is Proven vs. What Is Not
 
@@ -198,9 +211,9 @@ Living plan. Revise it as we learn. Do not treat this as a fixed contract.
     - operator wiring
     - app-launch UX
     - deciding when to switch `run <serial>` over
-- The first shell touch polish seam is now explicit.
+- The first shell touch polish seam is now mostly closed.
   - Touch on the outer shell path should feel like one tap, not a press/release two-step.
-  - The shell touch path now activates on touch-down and ignores the old release-side shell action.
+  - The shell touch path now emits one shell tap action per touch gesture instead of double-activating on down/up.
   - Mouse / pointer semantics stay unchanged.
 
 ## Best Known Numbers
