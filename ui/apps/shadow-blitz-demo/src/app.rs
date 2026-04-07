@@ -46,6 +46,7 @@ use winit::{
 use crate::document::StaticDocument;
 use crate::log::{runtime_log, runtime_log_json, runtime_wall_ms};
 use crate::runtime_document::RuntimeDocument;
+use shadow_ui_core::scene::{APP_VIEWPORT_HEIGHT_PX, APP_VIEWPORT_WIDTH_PX};
 
 #[cfg(target_os = "linux")]
 use winit::platform::wayland::WindowAttributesWayland;
@@ -710,7 +711,10 @@ fn window_attributes(demo_mode: DemoMode) -> WindowAttributes {
     let attributes = WindowAttributes::default()
         .with_title(demo_mode.title())
         .with_resizable(false)
-        .with_surface_size(LogicalSize::new(384.0, 720.0));
+        .with_surface_size(LogicalSize::new(
+            f64::from(APP_VIEWPORT_WIDTH_PX),
+            f64::from(APP_VIEWPORT_HEIGHT_PX),
+        ));
 
     #[cfg(target_os = "linux")]
     {

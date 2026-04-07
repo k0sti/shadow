@@ -4,26 +4,58 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-target="${1:-desktop}"
-app="${2:-timeline}"
-hold="${3:-1}"
+target="desktop"
+app="timeline"
+hold="1"
 
-strip_named_prefixes() {
-  case "$target" in
-    target=*)
-      target="${target#target=}"
-      ;;
-  esac
-  case "$app" in
-    app=*)
-      app="${app#app=}"
-      ;;
-  esac
-  case "$hold" in
-    hold=*)
-      hold="${hold#hold=}"
-      ;;
-  esac
+parse_args() {
+  local positional=()
+  local arg
+  local target_set=0
+  local app_set=0
+  local hold_set=0
+
+  target="desktop"
+  app="timeline"
+  hold="1"
+
+  for arg in "$@"; do
+    case "$arg" in
+      target=*)
+        target="${arg#target=}"
+        target_set=1
+        ;;
+      app=*)
+        app="${arg#app=}"
+        app_set=1
+        ;;
+      hold=*)
+        hold="${arg#hold=}"
+        hold_set=1
+        ;;
+      *)
+        positional+=("$arg")
+        ;;
+    esac
+  done
+
+  for arg in "${positional[@]}"; do
+    if (( !target_set )); then
+      target="$arg"
+      target_set=1
+      continue
+    fi
+    if (( !app_set )); then
+      app="$arg"
+      app_set=1
+      continue
+    fi
+    if (( !hold_set )); then
+      hold="$arg"
+      hold_set=1
+      continue
+    fi
+  done
 }
 
 resolve_target() {
@@ -37,7 +69,7 @@ resolve_target() {
   esac
 }
 
-strip_named_prefixes
+parse_args "$@"
 resolve_target
 
 run_desktop() {

@@ -35,126 +35,31 @@ runtime-deno-core-smoke:
 runtime-deno-runtime-smoke:
 	@nix run --accept-flake-config .#deno-runtime-smoke
 
-# Run the host-only Solid TSX compile smoke
-runtime-app-compile-smoke:
-	@nix develop .#runtime -c scripts/runtime_app_compile_smoke.sh
+# Run the English keyboard runtime smoke on the bundled host runtime seam
+runtime-app-keyboard-smoke:
+	@SHADOW_RUNTIME_APP_INPUT_PATH=runtime/app-keyboard-smoke/app.tsx \
+	SHADOW_RUNTIME_APP_CACHE_DIR=build/runtime/app-keyboard-smoke \
+	scripts/runtime_app_keyboard_smoke.sh
 
-# Run the first app document payload through the selected host seam
-runtime-app-document-smoke backend="deno-core":
-	@SHADOW_RUNTIME_HOST_BACKEND="{{backend}}" nix develop .#runtime -c scripts/runtime_app_document_smoke.sh
+# Run the tap-driven GM runtime app on the bundled host runtime seam
+runtime-app-nostr-gm-smoke:
+	@SHADOW_RUNTIME_APP_INPUT_PATH=runtime/app-nostr-gm/app.tsx \
+	SHADOW_RUNTIME_APP_CACHE_DIR=build/runtime/app-nostr-gm \
+	scripts/runtime_app_nostr_gm_smoke.sh
 
-# Run the first app document payload through the Deno Runtime host seam
-runtime-app-document-smoke-deno-runtime:
-	@just runtime-app-document-smoke deno-runtime
+# Run the timeline runtime app against a local relay and keyboard-driven compose flow
+runtime-app-nostr-timeline-smoke:
+	@scripts/runtime_app_nostr_timeline_smoke.sh
 
-# Run the first host-dispatched click through the selected bundled app runtime seam
-runtime-app-click-smoke backend="deno-core":
-	@SHADOW_RUNTIME_HOST_BACKEND="{{backend}}" nix develop .#runtime -c scripts/runtime_app_click_smoke.sh
-
-# Run the first host-dispatched click through the bundled app runtime seam on Deno Runtime
-runtime-app-click-smoke-deno-runtime:
-	@just runtime-app-click-smoke deno-runtime
-
-# Run the first host-dispatched change event through the selected bundled app runtime seam
-runtime-app-input-smoke backend="deno-core":
-	@SHADOW_RUNTIME_HOST_BACKEND="{{backend}}" nix develop .#runtime -c scripts/runtime_app_input_smoke.sh
-
-# Run the first host-dispatched change event through the bundled app runtime seam on Deno Runtime
-runtime-app-input-smoke-deno-runtime:
-	@just runtime-app-input-smoke deno-runtime
-
-# Run the focus -> input -> blur text behavior smoke through the selected bundled app runtime seam
-runtime-app-focus-smoke backend="deno-core":
-	@SHADOW_RUNTIME_HOST_BACKEND="{{backend}}" nix develop .#runtime -c scripts/runtime_app_focus_smoke.sh
-
-# Run the focus -> input -> blur text behavior smoke through the bundled app runtime seam on Deno Runtime
-runtime-app-focus-smoke-deno-runtime:
-	@just runtime-app-focus-smoke deno-runtime
-
-# Run the checkbox / boolean form smoke through the selected bundled app runtime seam
-runtime-app-toggle-smoke backend="deno-core":
-	@SHADOW_RUNTIME_HOST_BACKEND="{{backend}}" nix develop .#runtime -c scripts/runtime_app_toggle_smoke.sh
-
-# Run the checkbox / boolean form smoke through the bundled app runtime seam on Deno Runtime
-runtime-app-toggle-smoke-deno-runtime:
-	@just runtime-app-toggle-smoke deno-runtime
-
-# Run the text selection metadata smoke through the selected bundled app runtime seam
-runtime-app-selection-smoke backend="deno-core":
-	@SHADOW_RUNTIME_HOST_BACKEND="{{backend}}" nix develop .#runtime -c scripts/runtime_app_selection_smoke.sh
-
-# Run the text selection metadata smoke through the bundled app runtime seam on Deno Runtime
-runtime-app-selection-smoke-deno-runtime:
-	@just runtime-app-selection-smoke deno-runtime
-
-# Run the first OS-level Nostr API smoke through the selected bundled app runtime seam
-runtime-app-nostr-smoke backend="deno-core":
-	@SHADOW_RUNTIME_HOST_BACKEND="{{backend}}" nix develop .#runtime -c scripts/runtime_app_nostr_smoke.sh
-
-# Run the default-backend Nostr cache/persistence smoke through the OS API seam
-runtime-app-nostr-cache-smoke:
-	@nix develop .#runtime -c scripts/runtime_app_nostr_cache_smoke.sh
-
-# Run the first OS-level Nostr API smoke through the bundled app runtime seam on Deno Runtime
-runtime-app-nostr-smoke-deno-runtime:
-	@just runtime-app-nostr-smoke deno-runtime
-
-# Run the fixed-frame Blitz document smoke for app payload swapping
-runtime-app-blitz-document-smoke:
-	@scripts/runtime_app_blitz_document_smoke.sh
-
-# Run the host-visible runtime demo window on the selected backend
-runtime-app-host-run backend="deno-core" renderer="cpu":
-	@SHADOW_RUNTIME_HOST_BACKEND="{{backend}}" SHADOW_BLITZ_RENDERER="{{renderer}}" scripts/runtime_app_host_run.sh
-
-# Run the host-visible runtime demo window on Deno Runtime
-runtime-app-host-run-deno-runtime:
-	@just runtime-app-host-run deno-runtime
-
-# Run the host-visible runtime demo window with the GPU Vello renderer
-runtime-app-host-run-gpu backend="deno-core":
-	@SHADOW_RUNTIME_HOST_BACKEND="{{backend}}" SHADOW_BLITZ_RENDERER="gpu" scripts/runtime_app_host_run.sh
-
-# Run the host-visible runtime demo with an auto-exit smoke timer on the selected backend
-runtime-app-host-smoke backend="deno-core" renderer="cpu":
-	@SHADOW_RUNTIME_HOST_BACKEND="{{backend}}" SHADOW_BLITZ_RENDERER="{{renderer}}" scripts/runtime_app_host_smoke.sh
-
-# Run the host-visible runtime demo with an auto-exit smoke timer on Deno Runtime
-runtime-app-host-smoke-deno-runtime:
-	@just runtime-app-host-smoke deno-runtime
-
-# Run the host-visible runtime demo with the GPU Vello renderer
-runtime-app-host-smoke-gpu backend="deno-core":
-	@SHADOW_RUNTIME_HOST_BACKEND="{{backend}}" SHADOW_BLITZ_RENDERER="gpu" scripts/runtime_app_host_smoke.sh
-
-# Run the GPU runtime demo as a Wayland client under the Smithay compositor smoke path
-runtime-app-compositor-smoke-gpu:
-	@scripts/runtime_app_compositor_smoke.sh
-
-# Run the static GPU Blitz demo as a Wayland client under the Smithay compositor smoke path
-blitz-demo-compositor-smoke-gpu:
-	@scripts/blitz_demo_compositor_smoke.sh
+# Run the currently supported bundled host runtime smokes
+runtime-app-host-smokes:
+	@just runtime-app-keyboard-smoke
+	@just runtime-app-nostr-gm-smoke
+	@just runtime-app-nostr-timeline-smoke
 
 # Run the static GPU Blitz demo as a Wayland client under the guest compositor smoke path
 blitz-demo-guest-compositor-smoke-gpu:
 	@scripts/blitz_demo_guest_compositor_smoke.sh
-
-# Run the document/click/input/focus smokes on both host backends
-runtime-app-backend-parity-smoke:
-	@just runtime-app-document-smoke deno-core
-	@just runtime-app-click-smoke deno-core
-	@just runtime-app-input-smoke deno-core
-	@just runtime-app-focus-smoke deno-core
-	@just runtime-app-toggle-smoke deno-core
-	@just runtime-app-selection-smoke deno-core
-	@just runtime-app-nostr-smoke deno-core
-	@just runtime-app-document-smoke deno-runtime
-	@just runtime-app-click-smoke deno-runtime
-	@just runtime-app-input-smoke deno-runtime
-	@just runtime-app-focus-smoke deno-runtime
-	@just runtime-app-toggle-smoke deno-runtime
-	@just runtime-app-selection-smoke deno-runtime
-	@just runtime-app-nostr-smoke deno-runtime
 
 # Build the minimal Rusty V8 smoke binary for x86_64 Linux
 runtime-rusty-v8-smoke-x86_64-linux-gnu:
@@ -377,22 +282,6 @@ pixel-runtime-app-nostr-timeline-drm-hold:
 # Warm Pixel GPU artifacts without launching the device session
 pixel-gpu-warm:
 	@just pixel-runtime-app-nostr-timeline-gpu-warm
-
-# Run the tap-driven GM runtime app under the current host runtime backend
-runtime-app-nostr-gm-smoke:
-	@SHADOW_RUNTIME_APP_INPUT_PATH=runtime/app-nostr-gm/app.tsx \
-	SHADOW_RUNTIME_APP_CACHE_DIR=build/runtime/app-nostr-gm \
-	scripts/runtime_app_nostr_gm_smoke.sh
-
-# Run the timeline runtime app against a local relay and keyboard-driven compose flow
-runtime-app-nostr-timeline-smoke:
-	@scripts/runtime_app_nostr_timeline_smoke.sh
-
-# Run the English keyboard runtime smoke under the current host runtime backend
-runtime-app-keyboard-smoke:
-	@SHADOW_RUNTIME_APP_INPUT_PATH=runtime/app-keyboard-smoke/app.tsx \
-	SHADOW_RUNTIME_APP_CACHE_DIR=build/runtime/app-keyboard-smoke \
-	scripts/runtime_app_keyboard_smoke.sh
 
 # Restore the Android display stack after a hold-mode rooted takeover run
 pixel-restore-android:

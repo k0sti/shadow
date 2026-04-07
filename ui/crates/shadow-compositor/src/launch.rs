@@ -8,7 +8,7 @@ use std::{
 use shadow_ui_core::{
     app::{find_app, AppId},
     control,
-    scene::{APP_VIEWPORT_HEIGHT, APP_VIEWPORT_WIDTH},
+    scene::{APP_VIEWPORT_HEIGHT_PX, APP_VIEWPORT_WIDTH_PX},
 };
 
 pub fn launch_app(
@@ -116,20 +116,21 @@ fn find_manifest_upwards(start: &Path) -> Option<PathBuf> {
 }
 
 fn runtime_surface_width() -> u32 {
-    APP_VIEWPORT_WIDTH.round() as u32
+    APP_VIEWPORT_WIDTH_PX
 }
 
 fn runtime_surface_height() -> u32 {
-    APP_VIEWPORT_HEIGHT.round() as u32
+    APP_VIEWPORT_HEIGHT_PX
 }
 
 #[cfg(test)]
 mod tests {
     use super::{runtime_surface_height, runtime_surface_width};
+    use shadow_ui_core::scene::{APP_VIEWPORT_HEIGHT_PX, APP_VIEWPORT_WIDTH_PX};
 
     #[test]
     fn runtime_surface_dimensions_match_shell_viewport() {
-        assert_eq!(runtime_surface_width(), 492);
-        assert_eq!(runtime_surface_height(), 910);
+        assert_eq!(runtime_surface_width(), APP_VIEWPORT_WIDTH_PX);
+        assert_eq!(runtime_surface_height(), APP_VIEWPORT_HEIGHT_PX);
     }
 }

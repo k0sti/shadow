@@ -11,6 +11,7 @@ use blitz_dom::{DocGuard, DocGuardMut, Document};
 use blitz_html::HtmlDocument;
 use blitz_traits::events::UiEvent;
 use serde::{Deserialize, Serialize};
+use shadow_ui_core::scene::{APP_VIEWPORT_HEIGHT_PX, APP_VIEWPORT_WIDTH_PX};
 
 use crate::frame::template_document;
 use crate::log::{runtime_log, runtime_wall_ms};
@@ -19,8 +20,9 @@ use crate::runtime_session::{RuntimeDispatchEvent, RuntimePointerEvent, RuntimeS
 const STYLE_SELECTOR: &str = "#shadow-blitz-style";
 const ROOT_SELECTOR: &str = "#shadow-blitz-root";
 const DEBUG_SELECTOR: &str = "#shadow-blitz-debug";
-const DEFAULT_SURFACE_WIDTH: u32 = 384;
-const DEFAULT_SURFACE_HEIGHT: u32 = 720;
+const DEFAULT_SURFACE_WIDTH: u32 = APP_VIEWPORT_WIDTH_PX;
+const DEFAULT_SURFACE_HEIGHT: u32 = APP_VIEWPORT_HEIGHT_PX;
+const CLICK_CANCEL_DISTANCE_PX: f32 = 8.0;
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 pub struct RuntimeDocumentPayload {
     pub html: String,
@@ -39,6 +41,8 @@ pub struct RuntimeDocument {
     pending_runtime_event: Option<RuntimeDispatchEvent>,
     touch_anywhere_target_id: Option<String>,
     armed_pointer_target_id: Option<String>,
+    armed_pointer_press_position: Option<(f32, f32)>,
+    armed_pointer_dragged: bool,
     skip_next_raw_pointer_release: bool,
     skip_next_ui_pointer_release: bool,
     should_exit: bool,
@@ -48,6 +52,8 @@ pub struct RuntimeDocument {
     activate_on_pointer_down: bool,
     timer_tx: Sender<RuntimeTimerEvent>,
     timer_rx: Receiver<RuntimeTimerEvent>,
+    #[cfg(test)]
+    last_dispatched_runtime_event: Option<RuntimeDispatchEvent>,
 }
 
 impl RuntimeDocument {
@@ -91,6 +97,8 @@ impl RuntimeDocument {
                 .ok()
                 .filter(|value| !value.is_empty()),
             armed_pointer_target_id: None,
+            armed_pointer_press_position: None,
+            armed_pointer_dragged: false,
             skip_next_raw_pointer_release: false,
             skip_next_ui_pointer_release: false,
             should_exit: false,
@@ -100,6 +108,8 @@ impl RuntimeDocument {
             activate_on_pointer_down: env::var_os("SHADOW_BLITZ_TOUCH_ACTIVATE_ON_DOWN").is_some(),
             timer_tx,
             timer_rx,
+            #[cfg(test)]
+            last_dispatched_runtime_event: None,
         };
         document.apply_render();
         document.prime_touch_signal();
@@ -167,6 +177,9 @@ impl RuntimeDocument {
             }
             UiEvent::PointerMove(pointer) => {
                 self.debug_state.ui_seen = true;
+                if pointer.is_primary {
+                    self.note_pointer_move(pointer.client_x(), pointer.client_y(), "ui");
+                }
                 eprintln!(
                     "[shadow-runtime-demo] ui-pointer-move x={} y={} primary={}",
                     pointer.client_x(),
@@ -178,6 +191,7 @@ impl RuntimeDocument {
                 if self.skip_next_ui_pointer_release {
                     self.skip_next_ui_pointer_release = false;
                     self.skip_next_raw_pointer_release = true;
+                    self.clear_armed_pointer_state();
                     self.debug_state.ui_seen = true;
                     eprintln!(
                         "[shadow-runtime-demo] ui-pointer-up-skipped x={} y={} primary={}",
@@ -210,8 +224,11 @@ impl RuntimeDocument {
         match event {
             UiEvent::PointerDown(pointer) => {
                 if pointer.is_primary {
-                    self.armed_pointer_target_id =
-                        self.arm_target_for_pointer(pointer.client_x(), pointer.client_y(), "ui");
+                    self.arm_pointer_target(
+                        self.arm_target_for_pointer(pointer.client_x(), pointer.client_y(), "ui"),
+                        pointer.client_x(),
+                        pointer.client_y(),
+                    );
                     if self.armed_pointer_target_id.is_some() {
                         self.debug_state.hit_seen = true;
                     }
@@ -225,6 +242,8 @@ impl RuntimeDocument {
                         let Some(target_id) = self.armed_pointer_target_id.take() else {
                             return None;
                         };
+                        self.armed_pointer_press_position = None;
+                        self.armed_pointer_dragged = false;
                         self.skip_next_ui_pointer_release = true;
                         self.skip_next_raw_pointer_release = true;
                         eprintln!(
@@ -255,7 +274,19 @@ impl RuntimeDocument {
                     return None;
                 }
 
+                if self.armed_pointer_dragged {
+                    eprintln!(
+                        "[shadow-runtime-demo] ui-pointer-up-cancelled x={} y={} reason=dragged",
+                        pointer.client_x(),
+                        pointer.client_y()
+                    );
+                    self.clear_armed_pointer_state();
+                    return None;
+                }
+
                 let armed_target_id = self.armed_pointer_target_id.take();
+                self.armed_pointer_press_position = None;
+                self.armed_pointer_dragged = false;
                 let released_target_id =
                     self.shadow_target_id_at(pointer.client_x(), pointer.client_y());
                 let Some(target_id) =
@@ -303,7 +334,11 @@ impl RuntimeDocument {
         if pressed {
             self.skip_next_raw_pointer_release = false;
             self.debug_state.raw_seen = true;
-            self.armed_pointer_target_id = self.arm_target_for_pointer(client_x, client_y, "raw");
+            self.arm_pointer_target(
+                self.arm_target_for_pointer(client_x, client_y, "raw"),
+                client_x,
+                client_y,
+            );
             if self.armed_pointer_target_id.is_some() {
                 self.debug_state.hit_seen = true;
             }
@@ -316,12 +351,14 @@ impl RuntimeDocument {
 
         if self.skip_next_raw_pointer_release {
             self.skip_next_raw_pointer_release = false;
-            self.armed_pointer_target_id = None;
+            self.clear_armed_pointer_state();
             eprintln!("[shadow-runtime-demo] raw-pointer-up-skipped x={client_x} y={client_y}");
             return;
         }
 
         let armed_target_id = self.armed_pointer_target_id.take();
+        self.armed_pointer_press_position = None;
+        self.armed_pointer_dragged = false;
         let released_target_id = self.shadow_target_id_at(client_x, client_y);
         eprintln!(
             "[shadow-runtime-demo] raw-pointer-up x={client_x} y={client_y} armed={} target={}",
@@ -378,6 +415,11 @@ impl RuntimeDocument {
         event: RuntimeDispatchEvent,
         source: &str,
     ) -> Result<bool, String> {
+        #[cfg(test)]
+        {
+            self.last_dispatched_runtime_event = Some(event.clone());
+        }
+
         let Some(runtime_session) = self.runtime_session.as_mut() else {
             return Ok(false);
         };
@@ -402,6 +444,39 @@ impl RuntimeDocument {
             runtime_wall_ms()
         ));
         Ok(true)
+    }
+
+    fn arm_pointer_target(&mut self, target_id: Option<String>, client_x: f32, client_y: f32) {
+        self.armed_pointer_target_id = target_id;
+        self.armed_pointer_press_position = Some((client_x, client_y));
+        self.armed_pointer_dragged = false;
+    }
+
+    fn clear_armed_pointer_state(&mut self) {
+        self.armed_pointer_target_id = None;
+        self.armed_pointer_press_position = None;
+        self.armed_pointer_dragged = false;
+    }
+
+    fn note_pointer_move(&mut self, client_x: f32, client_y: f32, source: &str) {
+        if self.armed_pointer_dragged || self.armed_pointer_target_id.is_none() {
+            return;
+        }
+
+        let Some((start_x, start_y)) = self.armed_pointer_press_position else {
+            return;
+        };
+        let delta_x = client_x - start_x;
+        let delta_y = client_y - start_y;
+        if delta_x * delta_x + delta_y * delta_y < CLICK_CANCEL_DISTANCE_PX.powi(2) {
+            return;
+        }
+
+        self.armed_pointer_dragged = true;
+        eprintln!(
+            "[shadow-runtime-demo] {source}-pointer-drag-cancelled start={} {} current={} {}",
+            start_x, start_y, client_x, client_y
+        );
     }
 
     fn arm_target_for_pointer(&self, client_x: f32, client_y: f32, source: &str) -> Option<String> {
@@ -717,6 +792,18 @@ impl RuntimeDocument {
 
         self.shadow_target_id_at(x, y)
     }
+
+    #[cfg(test)]
+    fn scroll_top_for_target(&self, target_id: &str) -> Option<f64> {
+        let selector = format!(r#"[data-shadow-id="{target_id}"]"#);
+        let node_id = self.inner.query_selector(&selector).ok().flatten()?;
+        Some(self.inner.get_node(node_id)?.scroll_offset.y)
+    }
+
+    #[cfg(test)]
+    fn take_last_runtime_event(&mut self) -> Option<RuntimeDispatchEvent> {
+        self.last_dispatched_runtime_event.take()
+    }
 }
 
 impl Document for RuntimeDocument {
@@ -921,11 +1008,58 @@ fn runtime_surface_dimension(key: &str, default: u32) -> u32 {
 mod tests {
     use std::sync::{Mutex, MutexGuard};
 
+    use blitz_dom::Document as _;
+    use blitz_traits::events::{
+        BlitzPointerEvent, BlitzPointerId, BlitzWheelDelta, BlitzWheelEvent, MouseEventButton,
+        MouseEventButtons, PointerCoords, UiEvent,
+    };
+
     use super::{RuntimeDocument, RuntimeDocumentPayload};
+    use shadow_ui_core::scene::{APP_VIEWPORT_HEIGHT_PX, APP_VIEWPORT_WIDTH_PX};
 
     fn test_guard() -> MutexGuard<'static, ()> {
         static TEST_MUTEX: Mutex<()> = Mutex::new(());
-        TEST_MUTEX.lock().expect("lock runtime document test mutex")
+        TEST_MUTEX
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    fn pointer_coords(client_x: f32, client_y: f32) -> PointerCoords {
+        PointerCoords {
+            page_x: client_x,
+            page_y: client_y,
+            screen_x: client_x,
+            screen_y: client_y,
+            client_x,
+            client_y,
+        }
+    }
+
+    fn pointer_event(
+        id: BlitzPointerId,
+        button: MouseEventButton,
+        buttons: MouseEventButtons,
+        client_x: f32,
+        client_y: f32,
+    ) -> BlitzPointerEvent {
+        BlitzPointerEvent {
+            id,
+            is_primary: true,
+            coords: pointer_coords(client_x, client_y),
+            button,
+            buttons,
+            mods: Default::default(),
+            details: Default::default(),
+        }
+    }
+
+    fn scrollable_payload() -> RuntimeDocumentPayload {
+        RuntimeDocumentPayload {
+            html: String::from(
+                r#"<main style="width:100%;height:100%;display:block;background:#020617"><section data-shadow-id="scroller" style="width:100%;height:100%;overflow-y:auto;display:block"><div style="height:2400px;background:linear-gradient(180deg,#38bdf8 0%,#0f172a 100%)"></div></section></main>"#,
+            ),
+            css: None,
+        }
     }
 
     #[test]
@@ -1034,8 +1168,135 @@ mod tests {
             None,
         );
 
-        for (x, y) in [(120.0, 260.0), (192.0, 360.0), (264.0, 460.0)] {
+        let surface_width = APP_VIEWPORT_WIDTH_PX as f32;
+        let surface_height = APP_VIEWPORT_HEIGHT_PX as f32;
+        let card_left = (surface_width - 280.0) / 2.0;
+        let card_top = (surface_height - 240.0) / 2.0;
+
+        for (x, y) in [
+            (card_left + 32.0, card_top + 32.0),
+            (card_left + 140.0, card_top + 120.0),
+            (card_left + 248.0, card_top + 208.0),
+        ] {
             assert_eq!(document.target_at(x, y).as_deref(), Some("counter"));
         }
+    }
+
+    #[test]
+    fn wheel_scrolls_overflow_container_without_runtime_dispatch() {
+        let _guard = test_guard();
+        let mut document = RuntimeDocument::with_runtime(scrollable_payload(), None);
+        let client_x = APP_VIEWPORT_WIDTH_PX as f32 / 2.0;
+        let client_y = APP_VIEWPORT_HEIGHT_PX as f32 / 2.0;
+
+        assert_eq!(
+            document.target_at(client_x, client_y).as_deref(),
+            Some("scroller")
+        );
+        document.handle_ui_event(UiEvent::PointerMove(pointer_event(
+            BlitzPointerId::Mouse,
+            MouseEventButton::Main,
+            MouseEventButtons::None,
+            client_x,
+            client_y,
+        )));
+
+        document.handle_ui_event(UiEvent::Wheel(BlitzWheelEvent {
+            delta: BlitzWheelDelta::Pixels(0.0, -180.0),
+            coords: pointer_coords(client_x, client_y),
+            buttons: MouseEventButtons::None,
+            mods: Default::default(),
+        }));
+
+        assert!(
+            document
+                .scroll_top_for_target("scroller")
+                .unwrap_or_default()
+                > 0.0,
+            "wheel should advance the scroll container"
+        );
+        assert!(document.take_last_runtime_event().is_none());
+    }
+
+    #[test]
+    fn finger_pan_scrolls_without_runtime_click() {
+        let _guard = test_guard();
+        let mut document = RuntimeDocument::with_runtime(scrollable_payload(), None);
+        let client_x = APP_VIEWPORT_WIDTH_PX as f32 / 2.0;
+        let client_y = APP_VIEWPORT_HEIGHT_PX as f32 / 2.0;
+
+        assert_eq!(
+            document.target_at(client_x, client_y).as_deref(),
+            Some("scroller")
+        );
+        document.handle_ui_event(UiEvent::PointerDown(pointer_event(
+            BlitzPointerId::Finger(1),
+            MouseEventButton::Main,
+            MouseEventButtons::Primary,
+            client_x,
+            client_y,
+        )));
+        document.handle_ui_event(UiEvent::PointerMove(pointer_event(
+            BlitzPointerId::Finger(1),
+            MouseEventButton::Main,
+            MouseEventButtons::Primary,
+            client_x,
+            client_y - 96.0,
+        )));
+        document.handle_ui_event(UiEvent::PointerMove(pointer_event(
+            BlitzPointerId::Finger(1),
+            MouseEventButton::Main,
+            MouseEventButtons::Primary,
+            client_x,
+            client_y - 192.0,
+        )));
+        document.handle_ui_event(UiEvent::PointerUp(pointer_event(
+            BlitzPointerId::Finger(1),
+            MouseEventButton::Main,
+            MouseEventButtons::None,
+            client_x,
+            client_y - 192.0,
+        )));
+
+        assert!(
+            document
+                .scroll_top_for_target("scroller")
+                .unwrap_or_default()
+                > 0.0,
+            "touch pan should advance the scroll container"
+        );
+        assert!(document.take_last_runtime_event().is_none());
+    }
+
+    #[test]
+    fn pointer_tap_dispatches_runtime_click() {
+        let _guard = test_guard();
+        let mut document = RuntimeDocument::with_runtime(
+            RuntimeDocumentPayload {
+                html: String::from(r#"<button data-shadow-id="counter">Count 1</button>"#),
+                css: None,
+            },
+            None,
+        );
+        let (client_x, client_y) = document.point_for_target("counter");
+
+        document.handle_ui_event(UiEvent::PointerDown(pointer_event(
+            BlitzPointerId::Mouse,
+            MouseEventButton::Main,
+            MouseEventButtons::Primary,
+            client_x,
+            client_y,
+        )));
+        document.handle_ui_event(UiEvent::PointerUp(pointer_event(
+            BlitzPointerId::Mouse,
+            MouseEventButton::Main,
+            MouseEventButtons::None,
+            client_x,
+            client_y,
+        )));
+
+        let runtime_event = document.take_last_runtime_event().expect("runtime click");
+        assert_eq!(runtime_event.event_type, "click");
+        assert_eq!(runtime_event.target_id, "counter");
     }
 }

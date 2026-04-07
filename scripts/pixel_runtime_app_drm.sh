@@ -6,6 +6,16 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/pixel_common.sh"
 ensure_bootimg_shell "$@"
 
+serial="$(pixel_resolve_serial)"
+panel_size="$(pixel_display_size "$serial")"
+viewport_fit="$(python3 "$SCRIPT_DIR/runtime_viewport.py" --fit "$panel_size")"
+runtime_surface_width="$(printf '%s\n' "$viewport_fit" | awk -F= '/^fitted_width=/{print $2}')"
+runtime_surface_height="$(printf '%s\n' "$viewport_fit" | awk -F= '/^fitted_height=/{print $2}')"
+if [[ -z "$runtime_surface_width" || -z "$runtime_surface_height" ]]; then
+  echo "pixel_runtime_app_drm: failed to derive runtime viewport from $panel_size" >&2
+  exit 1
+fi
+
 default_turnip_tarball="$(pixel_dir)/vendor/turnip_26.1.0-devel-20260404_debian_trixie_arm64.tar.gz"
 default_mesa_tarball="$(pixel_dir)/vendor/mesa-for-android-container_26.1.0-devel-20260404_debian_trixie_arm64.tar.gz"
 if [[ -z "${PIXEL_VENDOR_MESA_TARBALL-}" && -f "$default_mesa_tarball" ]]; then
@@ -134,6 +144,8 @@ runtime_config_dir="$runtime_home_dir/.config"
 runtime_guest_env=$(
   cat <<EOF
 SHADOW_BLITZ_DEMO_MODE=runtime
+SHADOW_BLITZ_SURFACE_WIDTH=$runtime_surface_width
+SHADOW_BLITZ_SURFACE_HEIGHT=$runtime_surface_height
 SHADOW_BLITZ_RUNTIME_EXIT_DELAY_MS=$PIXEL_BLITZ_RUNTIME_EXIT_DELAY_MS
 SHADOW_BLITZ_RAW_POINTER_FALLBACK=1
 SHADOW_BLITZ_TOUCH_ANYWHERE_TARGET=counter
@@ -175,6 +187,8 @@ runtime_session_env=$(
   cat <<EOF
 SHADOW_GUEST_TOUCH_SIGNAL_PATH=$touch_signal_path
 SHADOW_GUEST_COMPOSITOR_BOOT_SPLASH_DRM=1
+SHADOW_GUEST_COMPOSITOR_TOPLEVEL_WIDTH=$runtime_surface_width
+SHADOW_GUEST_COMPOSITOR_TOPLEVEL_HEIGHT=$runtime_surface_height
 EOF
 )
 if [[ -n "$extra_session_env" ]]; then

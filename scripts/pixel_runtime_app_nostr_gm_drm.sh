@@ -6,15 +6,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/pixel_common.sh"
 ensure_bootimg_shell "$@"
 
-serial="$(pixel_resolve_serial)"
-panel_size="$(pixel_display_size "$serial")"
-panel_width="${panel_size%x*}"
-panel_height="${panel_size#*x}"
-
 gm_guest_env=$(
   cat <<EOF
-SHADOW_BLITZ_SURFACE_WIDTH=$panel_width
-SHADOW_BLITZ_SURFACE_HEIGHT=$panel_height
 SHADOW_BLITZ_TOUCH_ANYWHERE_TARGET=gm
 EOF
 )

@@ -3159,6 +3159,7 @@ dependencies = [
  "drm",
  "evdev",
  "libc",
+ "shadow-ui-core",
  "smithay",
  "tempfile",
  "tracing",

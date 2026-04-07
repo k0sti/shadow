@@ -11,6 +11,7 @@ use std::{
     time::{Duration, Instant},
 };
 
+use shadow_ui_core::scene::{APP_VIEWPORT_HEIGHT_PX, APP_VIEWPORT_WIDTH_PX};
 use smithay::{
     backend::allocator::{dmabuf::Dmabuf, Buffer as AllocatorBuffer, Format, Fourcc, Modifier},
     backend::input::ButtonState,
@@ -51,8 +52,8 @@ use smithay::{
 
 const BTN_LEFT: u32 = 0x110;
 const GUEST_RUNTIME_CLIENT_BIN: &str = "/data/local/tmp/shadow-blitz-demo";
-const DEFAULT_TOPLEVEL_WIDTH: i32 = 384;
-const DEFAULT_TOPLEVEL_HEIGHT: i32 = 720;
+const DEFAULT_TOPLEVEL_WIDTH: i32 = APP_VIEWPORT_WIDTH_PX as i32;
+const DEFAULT_TOPLEVEL_HEIGHT: i32 = APP_VIEWPORT_HEIGHT_PX as i32;
 
 fn default_guest_client_path() -> String {
     GUEST_RUNTIME_CLIENT_BIN.into()
