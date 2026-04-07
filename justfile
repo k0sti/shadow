@@ -310,9 +310,17 @@ runtime-app-sound-smoke:
 	SHADOW_RUNTIME_APP_CACHE_DIR=build/runtime/app-sound-smoke \
 	scripts/runtime_app_sound_smoke.sh
 
+# Run the simple podcast-player runtime audio smoke under the current host runtime backend
+runtime-app-podcast-player-smoke:
+	@scripts/runtime_app_podcast_player_smoke.sh
+
 # Run the runtime sound demo on the rooted Pixel through the guest compositor DRM path
 pixel-runtime-app-sound-drm:
 	@scripts/pixel_runtime_app_sound_drm.sh
+
+# Run the simple podcast-player runtime app on the rooted Pixel through the guest compositor DRM path
+pixel-runtime-app-podcast-player-drm:
+	@scripts/pixel_runtime_app_podcast_player_drm.sh
 
 # Restore the Android display stack after a hold-mode rooted takeover run
 pixel-restore-android:

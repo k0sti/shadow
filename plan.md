@@ -69,6 +69,8 @@ Living plan. Revise it as we learn. Do not treat this as a fixed contract.
   The staged demo asset is now the checked-in MP3 fixture `assets/demo-tone.mp3`, not the generated WAV placeholder.
 - [x] Generalize app-local asset staging.
   `runtime_prepare_app_bundle.ts` now copies sibling `assets/` into the compiled bundle dir, and Pixel runtime artifact prep carries that same tree to `/data/local/tmp/shadow-runtime-gnu` without a sound-demo-specific overlay hook.
+- [x] Add a richer file-backed sample app.
+  `runtime/app-podcast-player/app.tsx` now plays a staged local episode set, and the prep/launcher scripts prove the same runtime-audio seam with multiple downloaded files instead of one synthetic demo clip.
 
 ## Implementation Notes
 
@@ -94,5 +96,6 @@ Living plan. Revise it as we learn. Do not treat this as a fixed contract.
 - `just runtime-app-sound-smoke` now covers two host-side contracts: the normal `memory` backend UI flow and a fake `linux_spike` helper that writes junk to stdout, so stdio pollution in the audio helper path fails locally instead of waiting for a Pixel run.
 - Rooted Pixel runtime-app runs now also forbid `[shadow-runtime-demo] runtime-event-error:` in `session-output.txt`, so protocol decode errors no longer hide behind otherwise successful marker/frame checks.
 - `shadow-runtime-host` now defaults `SHADOW_RUNTIME_BUNDLE_DIR` from the `--session` bundle path, so relative asset lookup works on host without per-smoke env glue.
+- The first richer content sample is intentionally operator-staged, not checked in: `scripts/prepare_podcast_player_demo_assets.sh` downloads No Solutions episodes `#00` through `#04` into `build/runtime/app-podcast-player-assets`, converts the non-MP3 teaser to MP3, and feeds that set into a simple runtime player app.
 - If we need a shipped native path, Android’s current guidance is to target Oboe or AAudio rather than new OpenSL ES designs.
 - Start with file or URI playback, not PCM streaming. If we later need synthesis or latency-critical SFX, add a separate streaming/SFX API instead of overloading the MP3 path.
