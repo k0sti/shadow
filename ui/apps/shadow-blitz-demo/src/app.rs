@@ -55,6 +55,12 @@ use winit::platform::wayland::WindowAttributesWayland;
 const BLITZ_DEMO_WAYLAND_APP_ID: &str = "dev.shadow.blitz";
 #[cfg(target_os = "linux")]
 const RUNTIME_DEMO_WAYLAND_APP_ID: &str = "dev.shadow.counter";
+const BLITZ_DEMO_MODE_ENV: &str = "SHADOW_BLITZ_DEMO_MODE";
+const BLITZ_APP_TITLE_ENV: &str = "SHADOW_BLITZ_APP_TITLE";
+#[cfg(target_os = "linux")]
+const BLITZ_WAYLAND_APP_ID_ENV: &str = "SHADOW_BLITZ_WAYLAND_APP_ID";
+#[cfg(target_os = "linux")]
+const BLITZ_WAYLAND_INSTANCE_NAME_ENV: &str = "SHADOW_BLITZ_WAYLAND_INSTANCE_NAME";
 
 pub fn run() {
     init_gpu_logging();
@@ -138,7 +144,7 @@ enum DemoMode {
 
 impl DemoMode {
     fn from_env() -> Self {
-        match env::var("SHADOW_BLITZ_DEMO_MODE").ok().as_deref() {
+        match env::var(BLITZ_DEMO_MODE_ENV).ok().as_deref() {
             Some("runtime") => Self::Runtime,
             _ => Self::Static,
         }
@@ -158,6 +164,10 @@ impl DemoMode {
         }
     }
 
+    fn resolved_title(self) -> String {
+        env_override(BLITZ_APP_TITLE_ENV).unwrap_or_else(|| self.title().to_string())
+    }
+
     fn label(self) -> &'static str {
         match self {
             Self::Static => "static",
@@ -174,12 +184,27 @@ impl DemoMode {
     }
 
     #[cfg(target_os = "linux")]
+    fn resolved_wayland_app_id(self) -> String {
+        env_override(BLITZ_WAYLAND_APP_ID_ENV).unwrap_or_else(|| self.wayland_app_id().to_string())
+    }
+
+    #[cfg(target_os = "linux")]
     fn wayland_instance_name(self) -> &'static str {
         match self {
             Self::Static => "shadow-blitz-demo",
             Self::Runtime => "shadow-counter",
         }
     }
+
+    #[cfg(target_os = "linux")]
+    fn resolved_wayland_instance_name(self) -> String {
+        env_override(BLITZ_WAYLAND_INSTANCE_NAME_ENV)
+            .unwrap_or_else(|| self.wayland_instance_name().to_string())
+    }
+}
+
+fn env_override(key: &str) -> Option<String> {
+    env::var(key).ok().filter(|value| !value.is_empty())
 }
 
 struct BlitzApplication {
@@ -709,7 +734,7 @@ enum RuntimeEmbedderEvent {
 
 fn window_attributes(demo_mode: DemoMode) -> WindowAttributes {
     let attributes = WindowAttributes::default()
-        .with_title(demo_mode.title())
+        .with_title(demo_mode.resolved_title())
         .with_resizable(false)
         .with_surface_size(LogicalSize::new(
             f64::from(APP_VIEWPORT_WIDTH_PX),
@@ -719,8 +744,8 @@ fn window_attributes(demo_mode: DemoMode) -> WindowAttributes {
     #[cfg(target_os = "linux")]
     {
         let wayland_attributes = WindowAttributesWayland::default().with_name(
-            demo_mode.wayland_app_id(),
-            demo_mode.wayland_instance_name(),
+            demo_mode.resolved_wayland_app_id(),
+            demo_mode.resolved_wayland_instance_name(),
         );
         return attributes.with_platform_attributes(Box::new(wayland_attributes));
     }
@@ -773,6 +798,86 @@ fn log_pointer_window_event(event: &WindowEvent) {
             );
         }
         _ => {}
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{DemoMode, BLITZ_APP_TITLE_ENV, BLITZ_DEMO_MODE_ENV};
+    use std::{
+        env,
+        sync::{Mutex, MutexGuard},
+    };
+
+    #[cfg(target_os = "linux")]
+    const WAYLAND_APP_ID_ENV: &str = "SHADOW_BLITZ_WAYLAND_APP_ID";
+    #[cfg(target_os = "linux")]
+    const WAYLAND_INSTANCE_NAME_ENV: &str = "SHADOW_BLITZ_WAYLAND_INSTANCE_NAME";
+
+    fn env_guard() -> MutexGuard<'static, ()> {
+        static ENV_MUTEX: Mutex<()> = Mutex::new(());
+        ENV_MUTEX
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    struct EnvRestore {
+        saved: Vec<(&'static str, Option<String>)>,
+    }
+
+    impl EnvRestore {
+        fn new(keys: &[&'static str]) -> Self {
+            let saved = keys
+                .iter()
+                .map(|key| (*key, env::var(key).ok()))
+                .collect::<Vec<_>>();
+            for key in keys {
+                env::remove_var(key);
+            }
+            Self { saved }
+        }
+    }
+
+    impl Drop for EnvRestore {
+        fn drop(&mut self) {
+            for (key, value) in self.saved.drain(..) {
+                if let Some(value) = value {
+                    env::set_var(key, value);
+                } else {
+                    env::remove_var(key);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn runtime_mode_honors_launch_overrides() {
+        let _guard = env_guard();
+        #[cfg_attr(not(target_os = "linux"), allow(unused_mut))]
+        let mut restore_keys = vec![BLITZ_DEMO_MODE_ENV, BLITZ_APP_TITLE_ENV];
+        #[cfg(target_os = "linux")]
+        {
+            restore_keys.push(WAYLAND_APP_ID_ENV);
+            restore_keys.push(WAYLAND_INSTANCE_NAME_ENV);
+        }
+        let _restore = EnvRestore::new(&restore_keys);
+
+        env::set_var(BLITZ_DEMO_MODE_ENV, "runtime");
+        env::set_var(BLITZ_APP_TITLE_ENV, "Shadow Timeline");
+        #[cfg(target_os = "linux")]
+        {
+            env::set_var(WAYLAND_APP_ID_ENV, "dev.shadow.timeline");
+            env::set_var(WAYLAND_INSTANCE_NAME_ENV, "timeline");
+        }
+
+        let demo_mode = DemoMode::from_env();
+        assert_eq!(demo_mode, DemoMode::Runtime);
+        assert_eq!(demo_mode.resolved_title(), "Shadow Timeline");
+        #[cfg(target_os = "linux")]
+        {
+            assert_eq!(demo_mode.resolved_wayland_app_id(), "dev.shadow.timeline");
+            assert_eq!(demo_mode.resolved_wayland_instance_name(), "timeline");
+        }
     }
 }
 

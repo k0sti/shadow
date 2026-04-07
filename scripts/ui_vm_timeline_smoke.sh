@@ -18,7 +18,7 @@ cleanup
 
 (
   cd "$REPO_ROOT"
-  SHADOW_UI_VM_REFRESH_RUNTIME_ENV=1 "$SCRIPT_DIR/ui_vm_run.sh"
+  "$SCRIPT_DIR/ui_vm_run.sh"
 ) >"$RUN_LOG" 2>&1 &
 
 "$SCRIPT_DIR/shadowctl" vm wait-ready

@@ -8,6 +8,7 @@ cd "$REPO_ROOT"
 
 nix develop .#ui -c cargo fmt --manifest-path ui/Cargo.toml --all --check
 nix develop .#ui -c cargo test --manifest-path ui/Cargo.toml -p shadow-ui-core
+nix develop .#ui -c cargo test --manifest-path ui/Cargo.toml -p shadow-blitz-demo app::tests::
 nix develop .#ui -c cargo test --manifest-path ui/Cargo.toml -p shadow-blitz-demo runtime_document
 nix develop .#ui -c cargo check --manifest-path ui/Cargo.toml -p shadow-blitz-demo --no-default-features --features gpu
 
