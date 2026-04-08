@@ -91,14 +91,19 @@ def rewrite(path: str) -> str:
     return path
 
 
+state_dir = os.environ.get("SHADOW_STATE_DIR") or "/var/lib/shadow-ui"
+if state_dir == "/var/lib/shadow-ui" and not os.path.isdir("/var/lib/shadow-ui"):
+    xdg = os.environ.get("XDG_DATA_HOME") or os.path.join(os.path.expanduser("~"), ".local", "share")
+    state_dir = os.path.join(xdg, "shadow-ui")
+
 exports = {
     "SHADOW_RUNTIME_APP_BUNDLE_PATH": rewrite(default_session["bundlePath"]),
     "SHADOW_RUNTIME_APP_COUNTER_BUNDLE_PATH": rewrite(counter_session["bundlePath"]),
     "SHADOW_RUNTIME_APP_TIMELINE_BUNDLE_PATH": rewrite(timeline_session["bundlePath"]),
     "SHADOW_RUNTIME_APP_CASHU_BUNDLE_PATH": rewrite(cashu_session["bundlePath"]),
     "SHADOW_RUNTIME_HOST_BINARY_PATH": default_session["runtimeHostBinaryPath"],
-    "SHADOW_RUNTIME_CASHU_DATA_DIR": "/var/lib/shadow-ui/runtime-cashu",
-    "SHADOW_RUNTIME_NOSTR_DB_PATH": "/var/lib/shadow-ui/runtime-nostr.sqlite3",
+    "SHADOW_RUNTIME_CASHU_DATA_DIR": os.path.join(state_dir, "runtime-cashu"),
+    "SHADOW_RUNTIME_NOSTR_DB_PATH": os.path.join(state_dir, "runtime-nostr.sqlite3"),
 }
 
 if podcast_session_json:
