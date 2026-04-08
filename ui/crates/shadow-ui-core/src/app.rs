@@ -1,4 +1,4 @@
-use crate::color::{Color, ICON_CYAN, ICON_ORANGE};
+use crate::color::{Color, ICON_CYAN, ICON_ORANGE, ICON_PINK};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct AppId(&'static str);
@@ -41,6 +41,12 @@ pub const TIMELINE_WINDOW_TITLE: &str = "Shadow Timeline";
 pub const TIMELINE_RUNTIME_BUNDLE_ENV: &str = "SHADOW_RUNTIME_APP_TIMELINE_BUNDLE_PATH";
 pub const TIMELINE_RUNTIME_INPUT_PATH: &str = "runtime/app-nostr-timeline/app.tsx";
 pub const TIMELINE_RUNTIME_CACHE_DIR: &str = "build/runtime/app-nostr-timeline-host";
+pub const PODCAST_APP_ID: AppId = AppId::new("podcast");
+pub const PODCAST_WAYLAND_APP_ID: &str = "dev.shadow.podcast";
+pub const PODCAST_WINDOW_TITLE: &str = "No Solutions Player";
+pub const PODCAST_RUNTIME_BUNDLE_ENV: &str = "SHADOW_RUNTIME_APP_PODCAST_BUNDLE_PATH";
+pub const PODCAST_RUNTIME_INPUT_PATH: &str = "runtime/app-podcast-player/app.tsx";
+pub const PODCAST_RUNTIME_CACHE_DIR: &str = "build/runtime/app-podcast-player-host";
 pub const SHELL_APP_ID: AppId = AppId::new("shell");
 pub const SHELL_WAYLAND_APP_ID: &str = "dev.shadow.shell";
 pub const COUNTER_APP: DemoApp = DemoApp {
@@ -71,8 +77,22 @@ pub const TIMELINE_APP: DemoApp = DemoApp {
     runtime_cache_dir: TIMELINE_RUNTIME_CACHE_DIR,
     icon_color: ICON_ORANGE,
 };
+pub const PODCAST_APP: DemoApp = DemoApp {
+    id: PODCAST_APP_ID,
+    icon_label: "NS",
+    title: "Podcast",
+    subtitle: "No Solutions",
+    lifecycle_hint: "Shelving keeps the current episode loaded until the player is released.",
+    binary_name: "shadow-blitz-demo",
+    wayland_app_id: PODCAST_WAYLAND_APP_ID,
+    window_title: PODCAST_WINDOW_TITLE,
+    runtime_bundle_env: PODCAST_RUNTIME_BUNDLE_ENV,
+    runtime_input_path: PODCAST_RUNTIME_INPUT_PATH,
+    runtime_cache_dir: PODCAST_RUNTIME_CACHE_DIR,
+    icon_color: ICON_PINK,
+};
 
-pub const DEMO_APPS: [DemoApp; 2] = [COUNTER_APP, TIMELINE_APP];
+pub const DEMO_APPS: [DemoApp; 3] = [COUNTER_APP, TIMELINE_APP, PODCAST_APP];
 
 pub fn find_app(id: AppId) -> Option<&'static DemoApp> {
     DEMO_APPS.iter().find(|app| app.id == id)
@@ -105,8 +125,9 @@ pub fn home_apps() -> &'static [DemoApp] {
 mod tests {
     use super::{
         app_id_from_wayland_app_id, binary_name_for, find_app, find_app_by_str, home_apps,
-        COUNTER_APP, COUNTER_APP_ID, COUNTER_WAYLAND_APP_ID, SHELL_APP_ID, SHELL_WAYLAND_APP_ID,
-        TIMELINE_APP, TIMELINE_APP_ID, TIMELINE_WAYLAND_APP_ID,
+        COUNTER_APP, COUNTER_APP_ID, COUNTER_WAYLAND_APP_ID, PODCAST_APP, PODCAST_APP_ID,
+        PODCAST_WAYLAND_APP_ID, SHELL_APP_ID, SHELL_WAYLAND_APP_ID, TIMELINE_APP, TIMELINE_APP_ID,
+        TIMELINE_WAYLAND_APP_ID,
     };
 
     #[test]
@@ -143,5 +164,21 @@ mod tests {
             Some(TIMELINE_APP_ID)
         );
         assert_eq!(home_apps()[1].id, TIMELINE_APP_ID);
+    }
+
+    #[test]
+    fn podcast_app_lookup_round_trips() {
+        let app = find_app(PODCAST_APP_ID).expect("podcast app present");
+        assert_eq!(app, &PODCAST_APP);
+        assert_eq!(PODCAST_APP_ID.as_str(), "podcast");
+        assert_eq!(find_app_by_str("podcast"), Some(&PODCAST_APP));
+        assert_eq!(binary_name_for(PODCAST_APP_ID), Some("shadow-blitz-demo"));
+        assert_eq!(app.icon_label, "NS");
+        assert!(app.lifecycle_hint.contains("episode"));
+        assert_eq!(
+            app_id_from_wayland_app_id(PODCAST_WAYLAND_APP_ID),
+            Some(PODCAST_APP_ID)
+        );
+        assert_eq!(home_apps()[2].id, PODCAST_APP_ID);
     }
 }

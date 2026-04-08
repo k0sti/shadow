@@ -5,7 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 target="desktop"
-app="timeline"
+app="podcast"
 hold="1"
 
 parse_args() {
@@ -16,7 +16,7 @@ parse_args() {
   local hold_set=0
 
   target="desktop"
-  app="timeline"
+  app="podcast"
   hold="1"
 
   for arg in "$@"; do
@@ -93,15 +93,72 @@ exec_or_echo() {
 }
 
 run_desktop() {
+  if [[ "$(uname -s)" != "Linux" ]]; then
+    echo "ui-run: target=desktop uses the VM on $(uname -s) because the desktop compositor host is Linux-only" >&2
+    run_vm
+    return 0
+  fi
+
+  local runtime_env_tmp=""
+  local -a compositor_env=()
+
+  case "$app" in
+    shell)
+      ;;
+    counter|timeline|podcast)
+      compositor_env=(
+        "SHADOW_COMPOSITOR_AUTO_LAUNCH=1"
+        "SHADOW_COMPOSITOR_START_APP_ID=$app"
+      )
+      ;;
+    *)
+      echo "ui-run: target=desktop currently supports app=shell, app=counter, app=timeline, or app=podcast" >&2
+      exit 1
+      ;;
+  esac
+
+  if [[ -n "${SHADOW_UI_RUN_ECHO_EXEC-}" ]]; then
+    local env_assignment
+    for env_assignment in "${compositor_env[@]}"; do
+      printf 'env=%s\n' "$env_assignment"
+    done
+    printf 'command=nix develop .#ui -c cargo run --manifest-path ui/Cargo.toml -p shadow-compositor\n'
+    return 0
+  fi
+
   cd "$REPO_ROOT"
-  nix develop .#ui -c cargo run --manifest-path ui/Cargo.toml -p shadow-ui-desktop
+  runtime_env_tmp="$(mktemp "${TMPDIR:-/tmp}/shadow-ui-run-runtime-env.XXXXXX")"
+  trap 'rm -f "$runtime_env_tmp"' RETURN
+  SHADOW_RUNTIME_ENABLE_PODCAST_APP=1 \
+    "$SCRIPT_DIR/runtime_prepare_host_session_env.sh" >"$runtime_env_tmp"
+  # shellcheck source=/dev/null
+  source "$runtime_env_tmp"
+
+  if [[ "${#compositor_env[@]}" -gt 0 ]]; then
+    exec env "${compositor_env[@]}" \
+      nix develop .#ui -c cargo run --manifest-path ui/Cargo.toml -p shadow-compositor
+  fi
+
+  exec nix develop .#ui -c cargo run --manifest-path ui/Cargo.toml -p shadow-compositor
 }
 
 run_vm() {
-  if [[ "$app" != "timeline" ]]; then
-    echo "ui-run: target=vm ignores app=$app; the full shell decides what to show" >&2
-  fi
-  exec "$SCRIPT_DIR/ui_vm_run.sh"
+  case "$app" in
+    shell)
+      echo "ui-run: target=vm launches the full shell session" >&2
+      exec_or_echo "$SCRIPT_DIR/ui_vm_run.sh"
+      return 0
+      ;;
+    counter|timeline|podcast)
+      echo "ui-run: target=vm auto-opens app=$app through the guest shell session" >&2
+      exec_or_echo "$SCRIPT_DIR/ui_vm_run.sh" "SHADOW_UI_VM_START_APP_ID=$app"
+      return 0
+      ;;
+    *)
+      echo "ui-run: target=vm currently supports app=shell, app=counter, app=timeline, or app=podcast" >&2
+      exit 1
+      ;;
+  esac
 }
 
 run_pixel() {
@@ -115,8 +172,12 @@ run_pixel() {
       echo "ui-run: target=pixel launches the full home shell and asks it to open timeline" >&2
       shell_env=("PIXEL_SHELL_START_APP_ID=timeline")
       ;;
+    podcast)
+      echo "ui-run: target=pixel launches the full home shell and asks it to open podcast" >&2
+      shell_env=("PIXEL_SHELL_START_APP_ID=podcast")
+      ;;
     *)
-      echo "ui-run: target=pixel currently supports app=shell or app=timeline" >&2
+      echo "ui-run: target=pixel currently supports app=shell, app=timeline, or app=podcast" >&2
       exit 1
       ;;
   esac

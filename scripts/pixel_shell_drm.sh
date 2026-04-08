@@ -101,6 +101,7 @@ shell_session_env=$(
 SHADOW_GUEST_START_APP_ID=shell
 SHADOW_RUNTIME_APP_COUNTER_BUNDLE_PATH=$(pixel_runtime_counter_bundle_dst)
 SHADOW_RUNTIME_APP_TIMELINE_BUNDLE_PATH=$(pixel_runtime_timeline_bundle_dst)
+SHADOW_RUNTIME_APP_PODCAST_BUNDLE_PATH=$(pixel_runtime_podcast_bundle_dst)
 SHADOW_RUNTIME_HOST_BINARY_PATH=$(pixel_runtime_host_launcher_dst)
 SHADOW_GUEST_COMPOSITOR_BOOT_SPLASH_DRM=1
 EOF

@@ -871,9 +871,13 @@ mod tests {
     #[test]
     fn touch_tap_launches_immediately() {
         let mut shell = ShellModel::new();
+        let counter_frame = app_frame(0);
 
         assert_eq!(
-            shell.handle(ShellEvent::TouchTap { x: 226.0, y: 617.0 }),
+            shell.handle(ShellEvent::TouchTap {
+                x: counter_frame.x + counter_frame.w * 0.5,
+                y: counter_frame.y + counter_frame.h * 0.5,
+            }),
             Some(ShellAction::Launch {
                 app_id: COUNTER_APP_ID
             })

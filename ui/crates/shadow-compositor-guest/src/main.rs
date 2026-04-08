@@ -1779,7 +1779,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 #[cfg(test)]
 mod tests {
     use super::shell_start_app_id_from_env;
-    use shadow_ui_core::app::{COUNTER_APP_ID, TIMELINE_APP_ID};
+    use shadow_ui_core::app::{COUNTER_APP_ID, PODCAST_APP_ID, TIMELINE_APP_ID};
     use std::sync::{Mutex, OnceLock};
 
     fn env_lock() -> &'static Mutex<()> {
@@ -1811,6 +1811,9 @@ mod tests {
         });
         with_shell_start_app_env(Some("counter"), || {
             assert_eq!(shell_start_app_id_from_env(), Some(COUNTER_APP_ID));
+        });
+        with_shell_start_app_env(Some("podcast"), || {
+            assert_eq!(shell_start_app_id_from_env(), Some(PODCAST_APP_ID));
         });
     }
 

@@ -222,8 +222,7 @@ impl ShadowCompositor {
     }
 
     pub fn spawn_demo_client(&mut self) -> std::io::Result<()> {
-        let counter = shadow_ui_core::app::COUNTER_APP_ID;
-        self.launch_or_focus_app(counter)?;
+        self.launch_or_focus_app(auto_launch_app_id())?;
         tracing::info!("[shadow-compositor] launched-demo-client");
         Ok(())
     }
@@ -424,6 +423,16 @@ impl ShadowCompositor {
     }
 }
 
+fn auto_launch_app_id() -> AppId {
+    std::env::var("SHADOW_COMPOSITOR_START_APP_ID")
+        .ok()
+        .as_deref()
+        .and_then(shadow_ui_core::app::find_app_by_str)
+        .map(|app| app.id)
+        .filter(|app_id| *app_id != shadow_ui_core::app::SHELL_APP_ID)
+        .unwrap_or(shadow_ui_core::app::COUNTER_APP_ID)
+}
+
 impl Drop for ShadowCompositor {
     fn drop(&mut self) {
         for child in self.launched_apps.values_mut() {
@@ -445,5 +454,55 @@ impl ClientData for ClientState {
 
     fn disconnected(&self, _client_id: ClientId, reason: DisconnectReason) {
         tracing::info!(?reason, "shadow-compositor: client disconnected");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::auto_launch_app_id;
+    use shadow_ui_core::app::{COUNTER_APP_ID, PODCAST_APP_ID, TIMELINE_APP_ID};
+    use std::sync::{Mutex, OnceLock};
+
+    fn env_lock() -> &'static Mutex<()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(()))
+    }
+
+    fn with_start_app_env(value: Option<&str>, check: impl FnOnce()) {
+        let _guard = env_lock().lock().expect("lock start app env");
+        let key = "SHADOW_COMPOSITOR_START_APP_ID";
+        match value {
+            Some(value) => std::env::set_var(key, value),
+            None => std::env::remove_var(key),
+        }
+        check();
+        std::env::remove_var(key);
+    }
+
+    #[test]
+    fn auto_launch_app_id_defaults_to_counter() {
+        with_start_app_env(None, || {
+            assert_eq!(auto_launch_app_id(), COUNTER_APP_ID);
+        });
+    }
+
+    #[test]
+    fn auto_launch_app_id_accepts_runtime_apps() {
+        with_start_app_env(Some("timeline"), || {
+            assert_eq!(auto_launch_app_id(), TIMELINE_APP_ID);
+        });
+        with_start_app_env(Some("podcast"), || {
+            assert_eq!(auto_launch_app_id(), PODCAST_APP_ID);
+        });
+    }
+
+    #[test]
+    fn auto_launch_app_id_ignores_unknown_and_shell() {
+        with_start_app_env(Some("shell"), || {
+            assert_eq!(auto_launch_app_id(), COUNTER_APP_ID);
+        });
+        with_start_app_env(Some("missing"), || {
+            assert_eq!(auto_launch_app_id(), COUNTER_APP_ID);
+        });
     }
 }

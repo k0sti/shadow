@@ -18,6 +18,11 @@ host_bundle_manifest_path="$host_bundle_dir/.bundle-manifest.json"
 runtime_manifest_path="$host_bundle_dir/.runtime-bundle-manifest.json"
 package_ref="$repo#shadow-runtime-host-aarch64-linux-gnu"
 extra_bundle_dir="${PIXEL_RUNTIME_EXTRA_BUNDLE_ARTIFACT_DIR-}"
+audio_enabled="${PIXEL_SHELL_ENABLE_LINUX_AUDIO:-1}"
+audio_package_ref="$repo#shadow-linux-audio-spike-aarch64-linux-gnu"
+audio_out_link="$(pixel_dir)/shadow-linux-audio-spike-aarch64-linux-gnu-result"
+audio_binary_name="shadow-linux-audio-spike"
+audio_launcher_artifact="$host_bundle_dir/run-$audio_binary_name"
 
 counter_input_path="${PIXEL_SHELL_COUNTER_INPUT_PATH:-runtime/app-counter/app.tsx}"
 counter_cache_dir="${PIXEL_SHELL_COUNTER_CACHE_DIR:-build/runtime/pixel-shell-counter}"
@@ -26,6 +31,11 @@ counter_bundle_artifact="$(pixel_runtime_counter_bundle_artifact)"
 timeline_input_path="${PIXEL_SHELL_TIMELINE_INPUT_PATH:-runtime/app-nostr-timeline/app.tsx}"
 timeline_cache_dir="${PIXEL_SHELL_TIMELINE_CACHE_DIR:-build/runtime/pixel-shell-timeline}"
 timeline_bundle_artifact="$(pixel_runtime_timeline_bundle_artifact)"
+podcast_input_path="${PIXEL_SHELL_PODCAST_INPUT_PATH:-runtime/app-podcast-player/app.tsx}"
+podcast_cache_dir="${PIXEL_SHELL_PODCAST_CACHE_DIR:-build/runtime/pixel-shell-podcast}"
+podcast_bundle_artifact="$(pixel_runtime_podcast_bundle_artifact)"
+podcast_asset_dir=""
+podcast_config_json=""
 
 timeline_config_json="${SHADOW_RUNTIME_APP_TIMELINE_CONFIG_JSON-}"
 if [[ -z "$timeline_config_json" ]]; then
@@ -75,14 +85,41 @@ timeline_bundle_json="$(
     "$timeline_cache_dir" \
     SHADOW_RUNTIME_APP_CONFIG_JSON="$timeline_config_json"
 )"
+podcast_asset_json="$("$SCRIPT_DIR/prepare_podcast_player_demo_assets.sh")"
+podcast_asset_dir="$(
+  ASSET_JSON="$podcast_asset_json" python3 - <<'PY'
+import json
+import os
+
+print(json.loads(os.environ["ASSET_JSON"])["assetDir"])
+PY
+)"
+podcast_config_json="$(
+  ASSET_JSON="$podcast_asset_json" python3 - <<'PY'
+import json
+import os
+
+asset = json.loads(os.environ["ASSET_JSON"])
+asset.pop("assetDir", None)
+print(json.dumps(asset))
+PY
+)"
+podcast_bundle_json="$(
+  prepare_bundle \
+    "$podcast_input_path" \
+    "$podcast_cache_dir" \
+    SHADOW_RUNTIME_APP_CONFIG_JSON="$podcast_config_json"
+)"
 
 counter_bundle_source_path="$(printf '%s\n' "$counter_bundle_json" | bundle_source_path_from_json)"
 timeline_bundle_source_path="$(printf '%s\n' "$timeline_bundle_json" | bundle_source_path_from_json)"
+podcast_bundle_source_path="$(printf '%s\n' "$podcast_bundle_json" | bundle_source_path_from_json)"
 
 mkdir -p "$(dirname "$counter_bundle_artifact")"
 cp "$counter_bundle_source_path" "$counter_bundle_artifact"
 cp "$timeline_bundle_source_path" "$timeline_bundle_artifact"
-chmod 0644 "$counter_bundle_artifact" "$timeline_bundle_artifact"
+cp "$podcast_bundle_source_path" "$podcast_bundle_artifact"
+chmod 0644 "$counter_bundle_artifact" "$timeline_bundle_artifact" "$podcast_bundle_artifact"
 
 host_bundle_source_fingerprint="$(
   runtime_bundle_source_fingerprint \
@@ -91,12 +128,19 @@ host_bundle_source_fingerprint="$(
     "$repo/flake.lock" \
     "$repo/rust/shadow-runtime-host" \
     "$repo/rust/shadow-runtime-host/Cargo.lock" \
+    "$repo/rust/runtime-audio-host" \
     "$repo/rust/runtime-nostr-host" \
+    "$repo/rust/shadow-linux-audio-spike" \
     "$repo/rust/vendor/temporal_rs" \
     "$SCRIPT_DIR/pixel_prepare_shell_runtime_artifacts.sh" \
     "$SCRIPT_DIR/pixel_runtime_linux_bundle_common.sh" \
     "$counter_bundle_source_path" \
     "$timeline_bundle_source_path" \
+    "$podcast_bundle_source_path" \
+    "$podcast_asset_dir" \
+    "__pixel_shell_enable_linux_audio__${audio_enabled}" \
+    "__pixel_shell_audio_package_ref__${audio_package_ref}" \
+    "__pixel_shell_podcast_config__${podcast_config_json}" \
     "${extra_bundle_dir:-__no_extra_bundle__}"
 )"
 
@@ -107,16 +151,48 @@ if [[ "${PIXEL_FORCE_LINUX_BUNDLE_REBUILD-}" != 1 ]] \
   && [[ -f "$host_bundle_dir/$host_binary_name" ]] \
   && [[ -f "$host_bundle_dir/$(basename "$(pixel_runtime_counter_bundle_dst)")" ]] \
   && [[ -f "$host_bundle_dir/$(basename "$(pixel_runtime_timeline_bundle_dst)")" ]] \
+  && [[ -f "$host_bundle_dir/$(basename "$(pixel_runtime_podcast_bundle_dst)")" ]] \
   && runtime_bundle_manifest_matches "$host_bundle_manifest_path" "$host_bundle_source_fingerprint"; then
   host_bundle_cache_hit=1
+  if [[ "$audio_enabled" == "1" ]] \
+    && { [[ ! -x "$audio_launcher_artifact" ]] || [[ ! -f "$host_bundle_dir/$audio_binary_name" ]]; }; then
+    host_bundle_cache_hit=0
+  fi
+fi
+if [[ "$host_bundle_cache_hit" == "1" ]]; then
   printf 'Shell runtime host bundle cacheHit -> %s\n' "$host_bundle_dir"
 else
   stage_runtime_host_linux_bundle "$package_ref" "$host_bundle_out_link" "$host_bundle_dir" "$host_binary_name"
+  if [[ "$audio_enabled" == "1" ]]; then
+    nix build --accept-flake-config "$audio_package_ref" --out-link "$audio_out_link"
+    cp "$audio_out_link/bin/$audio_binary_name" "$host_bundle_dir/$audio_binary_name"
+    chmod 0755 "$host_bundle_dir/$audio_binary_name"
+    append_runtime_closure_from_package_ref "$audio_package_ref"
+  fi
   fill_linux_bundle_runtime_deps "$host_bundle_dir"
+  if [[ "$audio_enabled" == "1" ]]; then
+    copy_closure_dir_into_bundle "share/alsa" "$host_bundle_dir/share/alsa"
+    mkdir -p "$host_bundle_dir/lib/alsa-lib"
+    copy_closure_dir_into_bundle "lib/alsa-lib" "$host_bundle_dir/lib/alsa-lib" optional
+  fi
 
   if [[ -n "$extra_bundle_dir" ]]; then
     chmod -R u+w "$host_bundle_dir" 2>/dev/null || true
     cp -R "$extra_bundle_dir"/. "$host_bundle_dir"/
+  fi
+
+  if [[ "$audio_enabled" == "1" ]]; then
+    cat >"$audio_launcher_artifact" <<EOF
+#!/system/bin/sh
+DIR=\$(cd "\$(dirname "\$0")" && pwd)
+export ALSA_CONFIG_PATH="\$DIR/share/alsa/alsa.conf"
+export ALSA_CONFIG_DIR="\$DIR/share/alsa"
+export ALSA_CONFIG_UCM="\$DIR/share/alsa/ucm"
+export ALSA_CONFIG_UCM2="\$DIR/share/alsa/ucm2"
+export ALSA_PLUGIN_DIR="\$DIR/lib/alsa-lib"
+exec "\$DIR/lib/$PIXEL_RUNTIME_STAGE_LOADER_NAME" --library-path "\$DIR/lib" "\$DIR/$audio_binary_name" "\$@"
+EOF
+    chmod 0755 "$audio_launcher_artifact"
   fi
 
   cat >"$host_launcher_artifact" <<EOF
@@ -126,6 +202,16 @@ if [ "\$#" -ne 2 ] || [ "\$1" != "--session" ]; then
   echo "usage: $host_binary_name --session <bundle-path>" >&2
   exit 64
 fi
+EOF
+  if [[ "$audio_enabled" == "1" ]]; then
+    cat >>"$host_launcher_artifact" <<EOF
+export SHADOW_RUNTIME_AUDIO_BACKEND="\${SHADOW_RUNTIME_AUDIO_BACKEND:-linux_spike}"
+export SHADOW_RUNTIME_AUDIO_SPIKE_BINARY="\$DIR/run-$audio_binary_name"
+export SHADOW_RUNTIME_BUNDLE_DIR="\$DIR"
+exec "\$DIR/lib/$PIXEL_RUNTIME_STAGE_LOADER_NAME" --library-path "\$DIR/lib" "\$DIR/$host_binary_name" "\$@"
+EOF
+  else
+    cat >>"$host_launcher_artifact" <<EOF
 if command -v chroot >/dev/null 2>&1; then
   case "\$2" in
     "\$DIR"/*) set -- "\$1" "/\${2#\$DIR/}" ;;
@@ -134,6 +220,7 @@ if command -v chroot >/dev/null 2>&1; then
 fi
 exec "\$DIR/lib/$PIXEL_RUNTIME_STAGE_LOADER_NAME" --library-path "\$DIR/lib" "\$DIR/$host_binary_name" "\$@"
 EOF
+  fi
   chmod 0755 "$host_launcher_artifact"
 
   write_runtime_bundle_manifest \
@@ -144,25 +231,36 @@ fi
 
 cp "$counter_bundle_artifact" "$host_bundle_dir/$(basename "$(pixel_runtime_counter_bundle_dst)")"
 cp "$timeline_bundle_artifact" "$host_bundle_dir/$(basename "$(pixel_runtime_timeline_bundle_dst)")"
+cp "$podcast_bundle_artifact" "$host_bundle_dir/$(basename "$(pixel_runtime_podcast_bundle_dst)")"
+if [[ -n "$podcast_asset_dir" ]]; then
+  chmod -R u+w "$host_bundle_dir/assets" 2>/dev/null || true
+  rm -rf "$host_bundle_dir/assets"
+  cp -R "$podcast_asset_dir"/. "$host_bundle_dir"/
+fi
 chmod 0644 \
   "$host_bundle_dir/$(basename "$(pixel_runtime_counter_bundle_dst)")" \
-  "$host_bundle_dir/$(basename "$(pixel_runtime_timeline_bundle_dst)")"
+  "$host_bundle_dir/$(basename "$(pixel_runtime_timeline_bundle_dst)")" \
+  "$host_bundle_dir/$(basename "$(pixel_runtime_podcast_bundle_dst)")"
 
 runtime_helper_content_fingerprint="$(
   runtime_bundle_directory_fingerprint "$host_bundle_dir"
 )"
-python3 - "$runtime_manifest_path" "$runtime_helper_content_fingerprint" "$timeline_config_json" "$counter_input_path" "$timeline_input_path" "$extra_bundle_dir" <<'PY'
+python3 - "$runtime_manifest_path" "$runtime_helper_content_fingerprint" "$audio_enabled" "$podcast_config_json" "$timeline_config_json" "$counter_input_path" "$timeline_input_path" "$podcast_input_path" "$podcast_asset_dir" "$extra_bundle_dir" <<'PY'
 import json
 import os
 import sys
 from datetime import datetime, timezone
 
-manifest_path, content_fingerprint, timeline_config_json, counter_input_path, timeline_input_path, extra_bundle_dir = sys.argv[1:7]
+manifest_path, content_fingerprint, audio_enabled, podcast_config_json, timeline_config_json, counter_input_path, timeline_input_path, podcast_input_path, podcast_asset_dir, extra_bundle_dir = sys.argv[1:11]
 manifest = {
     "contentFingerprint": content_fingerprint,
     "counterInputPath": counter_input_path,
     "generatedAt": datetime.now(timezone.utc).isoformat(),
     "mode": "pixel-shell-runtime",
+    "linuxAudioEnabled": audio_enabled == "1",
+    "podcastAssetDir": os.path.abspath(podcast_asset_dir) if podcast_asset_dir else None,
+    "podcastConfigJson": podcast_config_json,
+    "podcastInputPath": podcast_input_path,
     "runtimeExtraBundleArtifactDir": os.path.abspath(extra_bundle_dir) if extra_bundle_dir else None,
     "timelineConfigJson": timeline_config_json,
     "timelineInputPath": timeline_input_path,
@@ -172,16 +270,18 @@ with open(manifest_path, "w", encoding="utf-8") as handle:
     handle.write("\n")
 PY
 
-python3 - "$host_bundle_dir" "$counter_bundle_artifact" "$timeline_bundle_artifact" "$host_bundle_cache_hit" <<'PY'
+python3 - "$host_bundle_dir" "$counter_bundle_artifact" "$timeline_bundle_artifact" "$podcast_bundle_artifact" "$host_bundle_cache_hit" <<'PY'
 import json
 import os
 import sys
 
-host_bundle_dir, counter_bundle_artifact, timeline_bundle_artifact, host_bundle_cache_hit = sys.argv[1:5]
+host_bundle_dir, counter_bundle_artifact, timeline_bundle_artifact, podcast_bundle_artifact, host_bundle_cache_hit = sys.argv[1:6]
 print(json.dumps({
     "counterBundleArtifact": os.path.abspath(counter_bundle_artifact),
     "counterBundleDevicePath": "/data/local/tmp/shadow-runtime-gnu/runtime-app-counter-bundle.js",
     "mode": "pixel-shell-runtime",
+    "podcastBundleArtifact": os.path.abspath(podcast_bundle_artifact),
+    "podcastBundleDevicePath": "/data/local/tmp/shadow-runtime-gnu/runtime-app-podcast-bundle.js",
     "runtimeHostBundleArtifactDir": os.path.abspath(host_bundle_dir),
     "runtimeHostBundleCacheHit": host_bundle_cache_hit == "1",
     "runtimeHostLauncherDevicePath": "/data/local/tmp/shadow-runtime-gnu/run-shadow-runtime-host",

@@ -34,11 +34,39 @@ check_dispatch_case() {
 }
 
 check_dispatch_case \
+  desktop_podcast_default \
+  0 \
+  "$(printf 'env=SHADOW_UI_VM_START_APP_ID=podcast\ncommand=%s' "$SCRIPT_DIR/ui_vm_run.sh")" \
+  "target=desktop uses the VM on" \
+  app=podcast target=desktop
+
+check_dispatch_case \
+  desktop_shell \
+  0 \
+  "command=$SCRIPT_DIR/ui_vm_run.sh" \
+  "target=desktop uses the VM on" \
+  app=shell target=desktop
+
+check_dispatch_case \
+  vm_podcast_open \
+  0 \
+  "$(printf 'env=SHADOW_UI_VM_START_APP_ID=podcast\ncommand=%s' "$SCRIPT_DIR/ui_vm_run.sh")" \
+  "" \
+  app=podcast target=vm
+
+check_dispatch_case \
   pixel_timeline_hold \
   0 \
   "$(printf 'env=PIXEL_SHELL_START_APP_ID=timeline\ncommand=%s' "$SCRIPT_DIR/pixel_shell_drm_hold.sh")" \
   "target=pixel launches the full home shell and asks it to open timeline" \
   app=timeline target=pixel
+
+check_dispatch_case \
+  pixel_podcast_hold \
+  0 \
+  "$(printf 'env=PIXEL_SHELL_START_APP_ID=podcast\ncommand=%s' "$SCRIPT_DIR/pixel_shell_drm_hold.sh")" \
+  "target=pixel launches the full home shell and asks it to open podcast" \
+  app=podcast target=pixel
 
 check_dispatch_case \
   pixel_shell_no_hold \
@@ -51,7 +79,14 @@ check_dispatch_case \
   pixel_counter_rejected \
   1 \
   "" \
-  "target=pixel currently supports app=shell or app=timeline" \
+  "target=pixel currently supports app=shell, app=timeline, or app=podcast" \
   app=counter target=pixel
+
+check_dispatch_case \
+  desktop_unknown_rejected \
+  1 \
+  "" \
+  "target=vm currently supports app=shell, app=counter, app=timeline, or app=podcast" \
+  app=unknown target=desktop
 
 printf 'ui_run_dispatch_smoke: ok\n'
