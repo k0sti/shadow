@@ -193,16 +193,22 @@ fn android_font_dirs() -> Vec<PathBuf> {
 }
 
 fn android_curated_font_paths() -> Vec<PathBuf> {
-    const FONT_FILES: &[&str] = &[
-        "/system/fonts/DroidSans.ttf",
-        "/system/fonts/DroidSans-Bold.ttf",
-        "/system/fonts/DroidSansMono.ttf",
-        "/system/fonts/NotoColorEmoji.ttf",
+    const FONT_NAMES: &[&str] = &[
+        "DroidSans.ttf",
+        "DroidSans-Bold.ttf",
+        "DroidSansMono.ttf",
+        "NotoColorEmoji.ttf",
     ];
 
+    let font_dir = env::var("SHADOW_BLITZ_FONT_DIR")
+        .ok()
+        .filter(|s| !s.is_empty())
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("/system/fonts"));
+
     let mut font_paths = Vec::new();
-    for font_file in FONT_FILES {
-        let path = PathBuf::from(font_file);
+    for name in FONT_NAMES {
+        let path = font_dir.join(name);
         if path.is_file() {
             font_paths.push(path);
         }
