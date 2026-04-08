@@ -188,6 +188,14 @@ Living plan. Revise it as we learn. Do not treat this as a fixed contract.
         - `runtime-document-ready`
         - `captured-frame checksum=45a631d62bd2656d size=532x1074`
         - no `NoCompatibleDevice` panic
+    - keep shell app switching alive across app relaunches
+      - root cause of the `Timeline -> Home -> Counter` black-screen:
+        - shell mode was still inheriting `EXIT_ON_CLIENT_DISCONNECT`
+        - terminating Timeline to launch Counter caused the guest compositor to stop as soon as the old client disconnected
+        - Counter then lost its Wayland server during `create_default_event_loop()`
+      - fix:
+        - shell sessions no longer request `EXIT_ON_CLIENT_DISCONNECT`
+        - guest compositor ignores that knob in shell mode even if it is accidentally set
 
 ## What Is Proven vs. What Is Not
 

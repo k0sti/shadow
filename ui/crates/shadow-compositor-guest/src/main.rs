@@ -140,8 +140,12 @@ impl ShadowGuestCompositor {
     fn new(event_loop: &mut EventLoop<Self>, display: Display<Self>) -> Self {
         let display_handle = display.handle();
         let loop_signal = event_loop.get_signal();
+        let shell_enabled = std::env::var_os("SHADOW_GUEST_SHELL").is_some()
+            || std::env::var("SHADOW_GUEST_START_APP_ID").ok().as_deref()
+                == Some(app::SHELL_APP_ID.as_str());
         let exit_on_client_disconnect =
-            std::env::var_os("SHADOW_GUEST_COMPOSITOR_EXIT_ON_CLIENT_DISCONNECT").is_some();
+            std::env::var_os("SHADOW_GUEST_COMPOSITOR_EXIT_ON_CLIENT_DISCONNECT").is_some()
+                && !shell_enabled;
         let dmabuf_formats = Self::supported_dmabuf_formats();
         let mut dmabuf_state = DmabufState::new();
         let dmabuf_global =
@@ -159,9 +163,6 @@ impl ShadowGuestCompositor {
         seat.add_pointer();
         let control_socket_path =
             control::init_listener(event_loop).expect("create guest compositor control socket");
-        let shell_enabled = std::env::var_os("SHADOW_GUEST_SHELL").is_some()
-            || std::env::var("SHADOW_GUEST_START_APP_ID").ok().as_deref()
-                == Some(app::SHELL_APP_ID.as_str());
 
         let mut state = Self {
             start_time: Instant::now(),
