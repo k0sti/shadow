@@ -134,6 +134,13 @@ run_desktop() {
   # shellcheck source=/dev/null
   source "$runtime_env_tmp"
 
+  local font_dir="$REPO_ROOT/build/desktop-fonts"
+  if [[ ! -f "$font_dir/DroidSans.ttf" ]]; then
+    "$SCRIPT_DIR/desktop_prepare_fonts.sh" "$font_dir"
+  fi
+  export SHADOW_BLITZ_FONT_DIR="$font_dir"
+  compositor_env+=("SHADOW_BLITZ_FONT_DIR=$font_dir")
+
   if [[ "${#compositor_env[@]}" -gt 0 ]]; then
     exec env "${compositor_env[@]}" \
       nix develop .#ui -c cargo run --manifest-path ui/Cargo.toml -p shadow-compositor
